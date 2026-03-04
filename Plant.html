@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>2026 阪神旅遊動態規劃系統</title>
+    <title>2026 旅遊動態規劃系統</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
@@ -63,6 +63,9 @@
         .memo-resize-handle:hover {
             background: linear-gradient(135deg, transparent 50%, rgba(0,0,0,0.3) 50%);
         }
+        /* 時間選擇器優化 */
+        input[type="time"]::-webkit-calendar-picker-indicator { display: none; -webkit-appearance: none; }
+        input[type="time"] { appearance: none; -moz-appearance: textfield; }
     </style>
 </head>
 <body>
@@ -82,49 +85,19 @@
             plans: [
                 {
                     id: "plan-a",
-                    name: "A方案 (主力行程)",
+                    name: "我的旅程",
                     days: [
                         {
                             id: "day-1",
-                            title: "Day 1 (05/12)",
-                            subtitle: "機場 - 飯店",
+                            title: "第一天",
+                            subtitle: "美好的開始",
                             nodes: [
-                                { id: "n1", title: "關西機場 (KIX)", type: "location", subtasks: [{ id: "s1", text: "預估 50 分鐘 搭乘特急/接送", type: "transit" }], children: [] },
-                                { id: "n2", title: "飯店 : VIA INN 心齋橋 (Check-in)", type: "hotel", subtasks: [], children: [] }
+                                { id: "n1", title: "抵達機場", type: "location", time: "10:00", tags: "第一站", subtasks: [], children: [] },
+                                { id: "n2", title: "飯店 Check-in", type: "hotel", time: "15:00", tags: "住宿", subtasks: [], children: [] }
                             ],
                             memos: [
-                                { id: "memo-1", x: 50, y: 150, width: 224, height: null, title: "MEMO", text: "記得買 ICOCA", color: "bg-yellow-200", image: null, linkedNodeId: "n1" },
-                                { id: "memo-2", x: 50, y: 300, width: 224, height: null, title: "MEMO", text: "全亞洲航空限重 20kg", color: "bg-pink-200", image: null, linkedNodeId: null }
+                                { id: "memo-1", x: 50, y: 250, width: 224, height: null, title: "教學小提示", text: "您可以自由拖曳這個備忘錄，或點擊右上角更換顏色。也可以從右下角拖曳改變大小！", color: "bg-yellow-200", image: null, linkedNodeId: null, isMinimized: false },
                             ]
-                        },
-                        {
-                            id: "day-2",
-                            title: "Day 2 (05/13)",
-                            subtitle: "梅田區購物",
-                            nodes: [
-                                { id: "n3", title: "飯店出發", type: "hotel", subtasks: [{ id: "s2", text: "預估 15 分鐘 搭乘地鐵 (御堂筋線)", type: "transit" }], children: [] },
-                                { id: "n4", title: "早餐", type: "meal", subtasks: [{ id: "s3", text: "預估 10 分鐘 步行", type: "transit" }], children: [] },
-                                { id: "n5", title: "梅田百貨、UNIQLO", type: "activity", subtasks: [{ id: "s4", text: "預估 3 小時 逛街", type: "time" }, { id: "s5", text: "預估 10 分鐘 步行", type: "transit" }], children: [] },
-                                { id: "n6", title: "午餐", type: "meal", subtasks: [{ id: "s6", text: "預估 15 分鐘 搭乘地鐵 (谷町線)", type: "transit" }], children: [] }
-                            ],
-                            memos: []
-                        }
-                    ]
-                },
-                {
-                    id: "plan-b",
-                    name: "B方案 (雨天備案)",
-                    days: [
-                        {
-                            id: "day-4-b",
-                            title: "Day 4 (05/15)",
-                            subtitle: "京都雨天備案",
-                            nodes: [
-                                { id: "n7", title: "飯店出發", type: "hotel", subtasks: [{ id: "s7", text: "預估 15 分鐘 步行/轉乘至京阪電車站", type: "transit" }], children: [] },
-                                { id: "n8", title: "早餐", type: "meal", subtasks: [{ id: "s8", text: "預估 50 分鐘 搭乘京阪本線至伏見稻荷", type: "transit" }], children: [] },
-                                { id: "n9", title: "伏見稻荷大社", type: "activity", subtasks: [{ id: "s9", text: "預估 2 小時", type: "time" }], children: [] }
-                            ],
-                            memos: []
                         }
                     ]
                 }
@@ -140,6 +113,16 @@
             { name: "bg-purple-200", hex: "#e9d5ff" },
             { name: "bg-orange-200", hex: "#fed7aa" }
         ];
+
+        // --- 節點可用樣式 ---
+        const NODE_STYLES = {
+            hotel:    { border: '#8b5cf6', bg: '#f5f3ff', icon: '🏨', label: '住宿' },
+            meal:     { border: '#f59e0b', bg: '#fffbeb', icon: '🍽️', label: '餐食' },
+            location: { border: '#3b82f6', bg: '#eff6ff', icon: '📍', label: '地點' },
+            activity: { border: '#10b981', bg: '#ecfdf5', icon: '🎯', label: '活動' },
+            transit:  { border: '#6366f1', bg: '#eef2ff', icon: '🚃', label: '交通' }
+        };
+        const DEFAULT_NODE_STYLE = { border: '#64748b', bg: '#f8fafc', icon: '📌', label: '其他' };
 
         // --- 產生隨機 ID ---
         const generateId = () => Math.random().toString(36).substr(2, 9);
@@ -173,6 +156,7 @@
             const [size, setSize] = useState({ width: memo.width || 224, height: memo.height || null });
             const [text, setText] = useState(memo.text);
             const [title, setTitle] = useState(memo.title || "MEMO");
+            const [isMinimized, setIsMinimized] = useState(memo.isMinimized || false);
             const [showColorPicker, setShowColorPicker] = useState(false);
             const dragRef = useRef(null);
             const resizeRef = useRef(null);
@@ -183,7 +167,8 @@
                 setSize({ width: memo.width || 224, height: memo.height || null });
                 setText(memo.text);
                 setTitle(memo.title || 'MEMO');
-            }, [memo.id, memo.x, memo.y, memo.width, memo.height, memo.text, memo.title]);
+                setIsMinimized(memo.isMinimized || false);
+            }, [memo.id, memo.x, memo.y, memo.width, memo.height, memo.text, memo.title, memo.isMinimized]);
 
             const handlePointerDown = (e) => {
                 const tag = e.target.tagName.toLowerCase();
@@ -198,13 +183,20 @@
                 if (!isDragging) return;
                 const dx = e.clientX - dragRef.current.startX;
                 const dy = e.clientY - dragRef.current.startY;
-                setPos({ x: dragRef.current.initialX + dx, y: dragRef.current.initialY + dy });
+                
+                const rawX = dragRef.current.initialX + dx;
+                // 限制最左 (0) 與最右 (螢幕寬度減 100) 以防消失
+                const newX = Math.max(0, Math.min(window.innerWidth - 100, rawX));
+                
+                // 限制最低 Y 軸 (130)，避免被頂部選單蓋住無法再拖曳
+                const newY = Math.max(130, dragRef.current.initialY + dy); 
+                setPos({ x: newX, y: newY });
             };
 
             const handlePointerUp = (e) => {
                 if (!isDragging) return;
                 setIsDragging(false);
-                updateMemo(memo.id, { ...memo, x: pos.x, y: pos.y, text, title });
+                updateMemo(memo.id, { ...memo, x: pos.x, y: pos.y, text, title, isMinimized });
                 e.target.releasePointerCapture(e.pointerId);
             };
 
@@ -249,7 +241,15 @@
             return (
                 <div 
                     className={`memo-card absolute shadow-lg rounded-md overflow-visible ${memo.color} border border-black/10`}
-                    style={{ left: pos.x, top: pos.y, width: size.width, height: size.height || 'auto', zIndex: (isDragging || isResizing) ? 50 : 40, display: 'flex', flexDirection: 'column' }}
+                    style={{ 
+                        left: pos.x, 
+                        top: pos.y, 
+                        width: size.width, 
+                        height: isMinimized ? 'auto' : (size.height || 'auto'), 
+                        zIndex: (isDragging || isResizing) ? 20 : 10, 
+                        display: 'flex', 
+                        flexDirection: 'column' 
+                    }}
                 >
                     {/* 拖曳把手 + 標題 */}
                     <div 
@@ -276,14 +276,25 @@
                                 <i className="fas fa-image"></i>
                                 <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
                             </label>
+                            <button 
+                                onClick={() => {
+                                    const nextState = !isMinimized;
+                                    setIsMinimized(nextState);
+                                    updateMemo(memo.id, { ...memo, isMinimized: nextState });
+                                }} 
+                                className="text-black/50 hover:text-black/80 text-xs p-0.5" 
+                                title={isMinimized ? "展開" : "收合"}
+                            >
+                                <i className={`fas ${isMinimized ? 'fa-chevron-down' : 'fa-chevron-up'}`}></i>
+                            </button>
                             <button onClick={() => deleteMemo(memo.id)} className="text-black/50 hover:text-red-600 text-xs p-0.5" title="刪除">
                                 <i className="fas fa-times"></i>
                             </button>
                         </div>
                     </div>
 
-                    {/* 色票選擇列 */}
-                    {showColorPicker && (
+                    {/* 色票選擇列 (只有展開時顯示) */}
+                    {!isMinimized && showColorPicker && (
                         <div className="color-picker-area flex gap-1.5 px-2 py-1.5 bg-white/50 border-b border-black/5">
                             {MEMO_COLORS.map(c => (
                                 <div
@@ -299,56 +310,61 @@
                         </div>
                     )}
 
-                    {/* 文字內容 */}
-                    <textarea 
-                        className="w-full p-2 bg-transparent resize-none focus:outline-none text-sm text-gray-800"
-                        style={{ flex: size.height ? 1 : undefined, minHeight: size.height ? 0 : '5rem', height: size.height ? undefined : '5rem' }}
-                        value={text}
-                        onChange={(e) => {
-                            setText(e.target.value);
-                            updateMemo(memo.id, { ...memo, text: e.target.value });
-                        }}
-                        placeholder="輸入備忘錄..."
-                    />
+                    {/* 當未收合時顯示下列內容 */}
+                    {!isMinimized && (
+                        <>
+                            {/* 文字內容 */}
+                            <textarea 
+                                className="w-full p-2 bg-transparent resize-none focus:outline-none text-sm text-gray-800"
+                                style={{ flex: size.height ? 1 : undefined, minHeight: size.height ? 0 : '5rem', height: size.height ? undefined : '5rem' }}
+                                value={text}
+                                onChange={(e) => {
+                                    setText(e.target.value);
+                                    updateMemo(memo.id, { ...memo, text: e.target.value });
+                                }}
+                                placeholder="輸入備忘錄..."
+                            />
 
-                    {/* 圖片區 */}
-                    {memo.image && (
-                        <div className="px-2 pb-2 relative group">
-                            <img src={memo.image} alt="備忘錄圖片" className="memo-image" />
-                            <button 
-                                onClick={removeImage}
-                                className="absolute top-1 right-3 bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow"
-                            >
-                                <i className="fas fa-times"></i>
-                            </button>
-                        </div>
+                            {/* 圖片區 */}
+                            {memo.image && (
+                                <div className="px-2 pb-2 relative group">
+                                    <img src={memo.image} alt="備忘錄圖片" className="memo-image" />
+                                    <button 
+                                        onClick={removeImage}
+                                        className="absolute top-1 right-3 bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow"
+                                    >
+                                        <i className="fas fa-times"></i>
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* 勾稽節點選擇器 */}
+                            <div className="px-2 py-1.5 border-t border-black/5 bg-white/30">
+                                <select
+                                    className="w-full text-xs bg-white/60 border border-black/10 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-300"
+                                    value={memo.linkedNodeId || ''}
+                                    onChange={(e) => {
+                                        updateMemo(memo.id, { ...memo, linkedNodeId: e.target.value || null });
+                                    }}
+                                >
+                                    <option value="">🔗 無勾稽節點</option>
+                                    {(dayNodes || []).map(n => (
+                                        <option key={n.id} value={n.id}>└ {n.title}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* 調整大小把手 */}
+                            <div
+                                className="memo-resize-handle"
+                                onPointerDown={handleResizeDown}
+                                onPointerMove={handleResizeMove}
+                                onPointerUp={handleResizeUp}
+                                onPointerCancel={handleResizeUp}
+                                title="拖曳調整大小"
+                            />
+                        </>
                     )}
-
-                    {/* 勾稽節點選擇器 */}
-                    <div className="px-2 py-1.5 border-t border-black/5 bg-white/30">
-                        <select
-                            className="w-full text-xs bg-white/60 border border-black/10 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-300"
-                            value={memo.linkedNodeId || ''}
-                            onChange={(e) => {
-                                updateMemo(memo.id, { ...memo, linkedNodeId: e.target.value || null });
-                            }}
-                        >
-                            <option value="">🔗 無勾稽節點</option>
-                            {(dayNodes || []).map(n => (
-                                <option key={n.id} value={n.id}>└ {n.title}</option>
-                            ))}
-                        </select>
-                    </div>
-
-                    {/* 調整大小把手 */}
-                    <div
-                        className="memo-resize-handle"
-                        onPointerDown={handleResizeDown}
-                        onPointerMove={handleResizeMove}
-                        onPointerUp={handleResizeUp}
-                        onPointerCancel={handleResizeUp}
-                        title="拖曳調整大小"
-                    />
                 </div>
             );
         };
@@ -452,7 +468,7 @@
                 updatePlans(p => ({
                     ...p,
                     days: p.days.map(d => d.id !== dayId ? d : {
-                        ...d, nodes: [...d.nodes, { id: generateId(), title: "新行程節點", type: "activity", subtasks: [], children: [] }]
+                        ...d, nodes: [...d.nodes, { id: generateId(), title: "新行程節點", type: "activity", time: "", tags: "", subtasks: [], children: [] }]
                     })
                 }));
             };
@@ -473,6 +489,33 @@
                     ...p,
                     days: p.days.map(d => d.id !== dayId ? d : {
                         ...d, nodes: d.nodes.map(n => n.id !== nodeId ? n : { ...n, title })
+                    })
+                }));
+            };
+
+            const updateNodeType = (dayId, nodeId, type) => {
+                updatePlans(p => ({
+                    ...p,
+                    days: p.days.map(d => d.id !== dayId ? d : {
+                        ...d, nodes: d.nodes.map(n => n.id !== nodeId ? n : { ...n, type })
+                    })
+                }));
+            };
+
+            const updateNodeTime = (dayId, nodeId, time) => {
+                updatePlans(p => ({
+                    ...p,
+                    days: p.days.map(d => d.id !== dayId ? d : {
+                        ...d, nodes: d.nodes.map(n => n.id !== nodeId ? n : { ...n, time })
+                    })
+                }));
+            };
+
+            const updateNodeTags = (dayId, nodeId, tags) => {
+                updatePlans(p => ({
+                    ...p,
+                    days: p.days.map(d => d.id !== dayId ? d : {
+                        ...d, nodes: d.nodes.map(n => n.id !== nodeId ? n : { ...n, tags })
                     })
                 }));
             };
@@ -656,7 +699,289 @@
                 letter: { name: 'Letter (216×279mm)', w: 216, h: 279 }
             };
 
-            const exportPDF = async (settings) => {
+            // --- 匯出共用：樣式對照表 ---
+            // (已移至全域 NODE_STYLES)
+
+            const EXPORT_MEMO_COLORS = {
+                'bg-yellow-200': { bg: '#fef9c3', border: '#fde68a', text: '#92400e', titleBg: '#fde68a' },
+                'bg-pink-200':   { bg: '#fce7f3', border: '#f9a8d4', text: '#9d174d', titleBg: '#f9a8d4' },
+                'bg-blue-200':   { bg: '#dbeafe', border: '#93c5fd', text: '#1e40af', titleBg: '#93c5fd' },
+                'bg-green-200':  { bg: '#dcfce7', border: '#86efac', text: '#166534', titleBg: '#86efac' },
+                'bg-purple-200': { bg: '#f3e8ff', border: '#c4b5fd', text: '#6b21a8', titleBg: '#c4b5fd' },
+                'bg-orange-200': { bg: '#ffedd5', border: '#fdba74', text: '#9a3412', titleBg: '#fdba74' }
+            };
+            const EXPORT_DEFAULT_MEMO = EXPORT_MEMO_COLORS['bg-yellow-200'];
+
+            // --- 共用：建立備忘錄卡片 ---
+            const buildMemoCard = (m, compact) => {
+                const ms = EXPORT_MEMO_COLORS[m.color] || EXPORT_DEFAULT_MEMO;
+                const mCard = document.createElement('div');
+                mCard.style.cssText = `background:${ms.bg};border:1px solid ${ms.border};border-radius:8px;overflow:hidden;page-break-inside:avoid;break-inside:avoid;`;
+                const mHeader = document.createElement('div');
+                mHeader.style.cssText = `background:${ms.titleBg};padding:${compact ? '4px 10px' : '6px 12px'};`;
+                const mTitleText = document.createElement('div');
+                mTitleText.style.cssText = `font-size:${compact ? '11px' : '12px'};font-weight:bold;color:${ms.text};`;
+                mTitleText.textContent = '📌 ' + (m.title || 'MEMO');
+                mHeader.appendChild(mTitleText);
+                mCard.appendChild(mHeader);
+                const mBody = document.createElement('div');
+                mBody.style.cssText = `padding:${compact ? '6px 10px' : '8px 12px'};`;
+                const mText = document.createElement('div');
+                mText.style.cssText = `font-size:${compact ? '12px' : '13px'};color:${ms.text};white-space:pre-wrap;line-height:1.5;word-break:break-all;overflow-wrap:break-word;`;
+                mText.textContent = m.text;
+                mBody.appendChild(mText);
+                if (m.image) {
+                    const img = document.createElement('img');
+                    img.src = m.image;
+                    img.style.cssText = `max-width:${compact ? '140px' : '200px'};max-height:${compact ? '70px' : '100px'};margin-top:6px;border-radius:4px;border:1px solid ${ms.border};`;
+                    mBody.appendChild(img);
+                }
+                mCard.appendChild(mBody);
+                return mCard;
+            };
+
+            // --- 共用：建立單天匯出 DOM ---
+            const buildDayContainer = (plan, day, dayIndex, containerWidth) => {
+                const container = document.createElement('div');
+                // 加入 page-break-after: always 原生列印換頁
+                container.style.cssText = `width:${containerWidth}px;background:#fff;padding:32px 32px 20px 32px;font-family:'Segoe UI',Tahoma,sans-serif;box-sizing:border-box;page-break-after:always;break-after:always;`;
+
+                // 方案標題
+                const planHeader = document.createElement('div');
+                planHeader.style.cssText = 'background:linear-gradient(135deg,#1e293b 0%,#334155 100%);color:#fff;padding:10px 16px;border-radius:8px 8px 0 0;';
+                planHeader.innerHTML = `<div style="font-size:15px;font-weight:bold;letter-spacing:0.5px;">✈️ ${plan.name}</div>`;
+                container.appendChild(planHeader);
+
+                // 天數標題
+                const dayHeader = document.createElement('div');
+                dayHeader.style.cssText = 'background:linear-gradient(135deg,#f1f5f9 0%,#e2e8f0 100%);padding:12px 16px;border-radius:0 0 8px 8px;margin-bottom:20px;border:1px solid #e2e8f0;border-top:none;';
+                dayHeader.innerHTML = `<div style="font-size:22px;font-weight:bold;color:#1e293b;">📅 ${day.title}</div>${day.subtitle ? `<div style="font-size:13px;color:#64748b;font-weight:500;margin-top:2px;">${day.subtitle}</div>` : ''}`;
+                container.appendChild(dayHeader);
+
+                const dayMemos = day.memos || [];
+
+                // 行程節點
+                day.nodes.forEach((node) => {
+                    const ns = NODE_STYLES[node.type] || DEFAULT_NODE_STYLE;
+                    const linkedMemos = dayMemos.filter(m => m.linkedNodeId === node.id);
+
+                    const row = document.createElement('div');
+                    row.style.cssText = 'display:flex;gap:12px;margin-bottom:14px;page-break-inside:avoid;break-inside:avoid;';
+
+                    // 左欄
+                    const leftCol = document.createElement('div');
+                    leftCol.style.cssText = linkedMemos.length > 0 ? 'flex:7;min-width:0;' : 'flex:1;';
+
+                    const card = document.createElement('div');
+                    card.style.cssText = `background:${ns.bg};border:1px solid #e2e8f0;border-left:5px solid ${ns.border};border-radius:8px;padding:12px 16px;`;
+
+                    // 標題列 + 標籤 + 時間
+                    const titleRow = document.createElement('div');
+                    titleRow.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap;';
+                    
+                    let timeHTML = node.time ? `<span style="font-size:16px;font-weight:900;color:#2563eb;letter-spacing:0.5px;margin-right:4px;">${node.time}</span>` : '';
+                    let tagsHTML = node.tags ? `<span style="font-size:10px;color:#166534;background:#dcfce7;border:1px solid #86efac;border-radius:4px;padding:2px 6px;margin-left:6px;font-weight:bold;">🏷️ ${node.tags.trim()}</span>` : '';
+                    
+                    titleRow.innerHTML = `<span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:${ns.border};font-size:14px;flex-shrink:0;text-align:center;">${ns.icon}</span>${timeHTML}<span style="font-size:16px;font-weight:bold;color:#1e293b;flex:1;">${node.title || '未命名節點'}</span>${tagsHTML}<span style="font-size:10px;color:${ns.border};background:${ns.bg};border:1px solid ${ns.border};border-radius:10px;padding:2px 8px;font-weight:600;flex-shrink:0;">${ns.label}</span>`;
+                    card.appendChild(titleRow);
+
+                    // 子任務
+                    if (node.subtasks.length > 0) {
+                        const subContainer = document.createElement('div');
+                        subContainer.style.cssText = `margin:6px 0 0 36px;padding-left:10px;border-left:2px dashed ${ns.border}40;`;
+                        node.subtasks.forEach(sub => {
+                            const subEl = document.createElement('div');
+                            subEl.style.cssText = 'font-size:13px;color:#475569;margin:4px 0;white-space:pre-wrap;';
+                            subEl.textContent = '⏱ ' + sub.text;
+                            subContainer.appendChild(subEl);
+                        });
+                        card.appendChild(subContainer);
+                    }
+
+                    // 子節點
+                    if (node.children && node.children.length > 0) {
+                        const childSection = document.createElement('div');
+                        childSection.style.cssText = 'margin-top:10px;padding-top:8px;border-top:1px dashed #cbd5e1;';
+                        const childRow = document.createElement('div');
+                        childRow.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;';
+                        node.children.forEach(child => {
+                            const childCard = document.createElement('div');
+                            childCard.style.cssText = `background:#fff;border:1px solid ${ns.border}50;border-left:3px solid ${ns.border};border-radius:6px;padding:8px 10px;min-width:160px;flex:1;page-break-inside:avoid;break-inside:avoid;`;
+                            childCard.innerHTML = `<div style="font-size:13px;font-weight:600;color:${ns.border};margin-bottom:2px;">${child.title}</div>`;
+                            child.subtasks.forEach(cs => {
+                                const csEl = document.createElement('div');
+                                csEl.style.cssText = 'font-size:11px;color:#64748b;margin-top:2px;padding-left:6px;border-left:2px dashed #cbd5e140;white-space:pre-wrap;';
+                                csEl.textContent = cs.text;
+                                childCard.appendChild(csEl);
+                            });
+                            childRow.appendChild(childCard);
+                        });
+                        childSection.appendChild(childRow);
+                        card.appendChild(childSection);
+                    }
+
+                    leftCol.appendChild(card);
+                    row.appendChild(leftCol);
+
+                    // 右欄：勾稽備忘錄
+                    if (linkedMemos.length > 0) {
+                        const rightCol = document.createElement('div');
+                        rightCol.style.cssText = 'flex:3;display:flex;flex-direction:column;gap:6px;';
+                        linkedMemos.forEach(m => { rightCol.appendChild(buildMemoCard(m, true)); });
+                        row.appendChild(rightCol);
+                    }
+
+                    container.appendChild(row);
+                });
+
+                // 未勾稽備忘錄
+                const unlinkedMemos = dayMemos.filter(m => !m.linkedNodeId);
+                if (unlinkedMemos.length > 0) {
+                    const memoSection = document.createElement('div');
+                    memoSection.style.cssText = 'margin-top:20px;padding-top:14px;border-top:2px dashed #94a3b8;';
+                    memoSection.innerHTML = '<div style="font-size:14px;font-weight:bold;color:#475569;margin-bottom:10px;">🗒️ 其他備忘錄</div>';
+                    const memoGrid = document.createElement('div');
+                    memoGrid.style.cssText = 'display:flex;gap:10px;flex-wrap:wrap;';
+                    unlinkedMemos.forEach(m => {
+                        const wrapper = document.createElement('div');
+                        wrapper.style.cssText = 'flex:1;min-width:200px;max-width:320px;page-break-inside:avoid;break-inside:avoid;';
+                        wrapper.appendChild(buildMemoCard(m, false));
+                        memoGrid.appendChild(wrapper);
+                    });
+                    memoSection.appendChild(memoGrid);
+                    container.appendChild(memoSection);
+                }
+
+                // 頁尾
+                const footerLine = document.createElement('div');
+                footerLine.style.cssText = 'margin-top:24px;border-top:1px solid #e2e8f0;padding-top:8px;';
+                footerLine.innerHTML = `<div style="font-size:11px;color:#94a3b8;text-align:center;">✈️ ${plan.name}  ·  ${day.title}${day.subtitle ? ' — ' + day.subtitle : ''}  ·  Page ${dayIndex + 1} / ${plan.days.length}</div>`;
+                container.appendChild(footerLine);
+
+                return container;
+            };
+
+            // --- 匯出 HTML 預覽 ---
+            const exportHTML = (settings) => {
+                if (!activePlan || activePlan.days.length === 0) {
+                    alert('當前方案沒有任何天數可匯出');
+                    return;
+                }
+                setShowPdfSettings(false);
+
+                const isLandscape = settings && settings.orientation === 'landscape';
+                const containerWidth = isLandscape ? 1100 : 800;
+
+                const pages = [];
+                for (let i = 0; i < activePlan.days.length; i++) {
+                    const container = buildDayContainer(activePlan, activePlan.days[i], i, containerWidth);
+                    // 加入分頁間距
+                    container.style.cssText += 'margin:0 auto 40px auto;box-shadow:0 2px 12px rgba(0,0,0,0.1);border-radius:8px;';
+                    pages.push(container.outerHTML);
+                }
+
+                const html = `<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${activePlan.name} — 旅遊規劃預覽</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #e2e8f0; font-family: 'Segoe UI', Tahoma, sans-serif; padding: 40px 20px; }
+        @media print { 
+            body { background: #fff; padding: 0; }
+            * {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+        }
+    </style>
+</head>
+<body>
+${pages.join('\n')}
+</body>
+</html>`;
+
+                const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${activePlan.name}_旅遊規劃_預覽.html`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+            };
+
+            // --- 匯出 PDF (原生列印版) ---
+            const exportPDF = (settings) => {
+                if (!activePlan || activePlan.days.length === 0) {
+                    alert('當前方案沒有任何天數可匯出');
+                    return;
+                }
+                setShowPdfSettings(false);
+                setIsExporting(true);
+
+                const isLandscape = settings && settings.orientation === 'landscape';
+                const containerWidth = isLandscape ? 1100 : 800;
+                const margin = Number(settings.margin || 10);
+
+                const pages = [];
+                for (let i = 0; i < activePlan.days.length; i++) {
+                    const container = buildDayContainer(activePlan, activePlan.days[i], i, containerWidth);
+                    container.style.cssText += 'margin:0 auto;'; 
+                    pages.push(container.outerHTML);
+                }
+
+                // 根據方向設定列印 @page
+                const cssBoxPage = isLandscape 
+                    ? `@page { size: landscape; margin: ${margin}mm; }`
+                    : `@page { size: portrait; margin: ${margin}mm; }`;
+
+                const html = `<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>${activePlan.name}_旅遊規劃_${isLandscape ? '橫式' : '直式'}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #fff; font-family: 'Segoe UI', Tahoma, sans-serif; }
+        @media print { 
+            ${cssBoxPage}
+            body { background: #fff; padding: 0; margin: 0; }
+            * {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+        }
+    </style>
+</head>
+<body>
+${pages.join('\n')}
+<script>
+    window.onload = function() {
+        setTimeout(function() {
+            window.print();
+        }, 500);
+    };
+<\/script>
+</body>
+</html>`;
+
+                const printWindow = window.open('', '_blank');
+                if (printWindow) {
+                    printWindow.document.open();
+                    printWindow.document.write(html);
+                    printWindow.document.close();
+                } else {
+                    alert('無法開啟列印視窗，請檢查是否被瀏覽器彈出視窗攔截器阻擋');
+                }
+                setIsExporting(false);
+            };
+
+            /* 原本的 html2canvas + jsPDF 版本 (保留供參考)
+            const exportPDF_Old = async (settings) => {
                 if (!activePlan || activePlan.days.length === 0) {
                     alert('當前方案沒有任何天數可匯出');
                     return;
@@ -672,6 +997,7 @@
                     const pageHeight = isLandscape ? fmt.w : fmt.h;
                     const margin = Number(settings.margin) || 10;
                     const contentWidth = pageWidth - margin * 2;
+                    const containerWidth = isLandscape ? 1100 : 800;
 
                     const pdf = new jsPDF({ orientation: settings.orientation, unit: 'mm', format: settings.format });
 
@@ -679,141 +1005,8 @@
                         const day = activePlan.days[i];
                         if (i > 0) pdf.addPage();
 
-                        const containerWidth = isLandscape ? 1100 : 800;
-                        const container = document.createElement('div');
-                        container.style.cssText = `position:absolute;left:-9999px;top:0;width:${containerWidth}px;background:#fff;padding:32px;font-family:Segoe UI,Tahoma,sans-serif;`;
-
-                        // 方案標題
-                        const planHeader = document.createElement('div');
-                        planHeader.style.cssText = 'font-size:14px;color:#64748b;margin-bottom:4px;';
-                        planHeader.textContent = activePlan.name;
-                        container.appendChild(planHeader);
-
-                        // 天數標題
-                        const dayTitle = document.createElement('h1');
-                        dayTitle.style.cssText = 'font-size:24px;font-weight:bold;color:#1e293b;margin:0 0 20px 0;padding-bottom:8px;border-bottom:2px solid #e2e8f0;';
-                        dayTitle.textContent = day.title;
-                        container.appendChild(dayTitle);
-
-                        const dayMemos = day.memos || [];
-
-                        // 行程節點
-                        day.nodes.forEach((node) => {
-                            // 查找勾稽備忘錄
-                            const linkedMemos = dayMemos.filter(m => m.linkedNodeId === node.id);
-
-                            // 雙欄容器
-                            const row = document.createElement('div');
-                            row.style.cssText = 'display:flex;gap:12px;margin-bottom:12px;';
-
-                            // 左欄：節點內容
-                            const leftCol = document.createElement('div');
-                            leftCol.style.cssText = linkedMemos.length > 0 ? 'flex:7;min-width:0;' : 'flex:1;';
-
-                            const card = document.createElement('div');
-                            card.style.cssText = 'background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 16px;';
-
-                            const title = document.createElement('div');
-                            title.style.cssText = 'font-size:16px;font-weight:bold;color:#1e293b;display:flex;align-items:center;gap:8px;';
-                            title.innerHTML = '<span style="color:#3b82f6;font-size:12px;">●</span> ' + (node.title || '未命名節點');
-                            card.appendChild(title);
-
-                            node.subtasks.forEach(sub => {
-                                const subEl = document.createElement('div');
-                                subEl.style.cssText = 'font-size:13px;color:#64748b;margin:4px 0 0 20px;padding-left:8px;border-left:2px dashed #cbd5e1;white-space:pre-wrap;';
-                                subEl.textContent = sub.text;
-                                card.appendChild(subEl);
-                            });
-
-                            if (node.children && node.children.length > 0) {
-                                const childRow = document.createElement('div');
-                                childRow.style.cssText = 'display:flex;gap:8px;margin-top:10px;padding-top:8px;border-top:1px dashed #e2e8f0;flex-wrap:wrap;';
-                                node.children.forEach(child => {
-                                    const childCard = document.createElement('div');
-                                    childCard.style.cssText = 'background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:8px 10px;min-width:160px;flex:1;';
-                                    const cTitle = document.createElement('div');
-                                    cTitle.style.cssText = 'font-size:13px;font-weight:600;color:#334155;';
-                                    cTitle.textContent = child.title;
-                                    childCard.appendChild(cTitle);
-                                    child.subtasks.forEach(cs => {
-                                        const csEl = document.createElement('div');
-                                        csEl.style.cssText = 'font-size:11px;color:#94a3b8;margin-top:2px;padding-left:6px;border-left:2px dashed #cbd5e1;white-space:pre-wrap;';
-                                        csEl.textContent = cs.text;
-                                        childCard.appendChild(csEl);
-                                    });
-                                    childRow.appendChild(childCard);
-                                });
-                                card.appendChild(childRow);
-                            }
-
-                            leftCol.appendChild(card);
-                            row.appendChild(leftCol);
-
-                            // 右欄：勾稽備忘錄
-                            if (linkedMemos.length > 0) {
-                                const rightCol = document.createElement('div');
-                                rightCol.style.cssText = 'flex:3;display:flex;flex-direction:column;gap:6px;';
-                                linkedMemos.forEach(m => {
-                                    const mCard = document.createElement('div');
-                                    mCard.style.cssText = 'background:#fef9c3;border:1px solid #fde68a;border-radius:6px;padding:8px 10px;';
-                                    const mTitle = document.createElement('div');
-                                    mTitle.style.cssText = 'font-size:11px;font-weight:bold;color:#92400e;margin-bottom:2px;';
-                                    mTitle.textContent = '📌 ' + (m.title || 'MEMO');
-                                    mCard.appendChild(mTitle);
-                                    const mText = document.createElement('div');
-                                    mText.style.cssText = 'font-size:12px;color:#78350f;white-space:pre-wrap;';
-                                    mText.textContent = m.text;
-                                    mCard.appendChild(mText);
-                                    if (m.image) {
-                                        const img = document.createElement('img');
-                                        img.src = m.image;
-                                        img.style.cssText = 'max-width:160px;max-height:80px;margin-top:4px;border-radius:4px;';
-                                        mCard.appendChild(img);
-                                    }
-                                    rightCol.appendChild(mCard);
-                                });
-                                row.appendChild(rightCol);
-                            }
-
-                            container.appendChild(row);
-                        });
-
-                        // 未勾稽備忘錄
-                        const unlinkedMemos = dayMemos.filter(m => !m.linkedNodeId);
-                        if (unlinkedMemos.length > 0) {
-                            const memoSection = document.createElement('div');
-                            memoSection.style.cssText = 'margin-top:20px;padding-top:12px;border-top:2px solid #fbbf24;';
-                            const memoTitle = document.createElement('div');
-                            memoTitle.style.cssText = 'font-size:14px;font-weight:bold;color:#92400e;margin-bottom:8px;';
-                            memoTitle.textContent = '📌 其他備忘錄';
-                            memoSection.appendChild(memoTitle);
-                            unlinkedMemos.forEach(m => {
-                                const memoItem = document.createElement('div');
-                                memoItem.style.cssText = 'background:#fef9c3;border:1px solid #fde68a;border-radius:6px;padding:8px 12px;margin-bottom:6px;';
-                                const mName = document.createElement('div');
-                                mName.style.cssText = 'font-size:12px;font-weight:bold;color:#92400e;margin-bottom:2px;';
-                                mName.textContent = m.title || 'MEMO';
-                                memoItem.appendChild(mName);
-                                const mText = document.createElement('div');
-                                mText.style.cssText = 'font-size:13px;color:#78350f;white-space:pre-wrap;';
-                                mText.textContent = m.text;
-                                memoItem.appendChild(mText);
-                                if (m.image) {
-                                    const img = document.createElement('img');
-                                    img.src = m.image;
-                                    img.style.cssText = 'max-width:200px;max-height:100px;margin-top:6px;border-radius:4px;';
-                                    memoItem.appendChild(img);
-                                }
-                                memoSection.appendChild(memoItem);
-                            });
-                            container.appendChild(memoSection);
-                        }
-
-                        // 頁尾
-                        const footer = document.createElement('div');
-                        footer.style.cssText = 'margin-top:24px;font-size:11px;color:#94a3b8;text-align:center;';
-                        footer.textContent = `${activePlan.name} — ${day.title} — Page ${i + 1} / ${activePlan.days.length}`;
-                        container.appendChild(footer);
+                        const container = buildDayContainer(activePlan, day, i, containerWidth);
+                        container.style.cssText += 'position:absolute;left:-9999px;top:0;';
 
                         document.body.appendChild(container);
 
@@ -849,6 +1042,7 @@
                     setIsExporting(false);
                 }
             };
+            */
 
             const importJSON = (e) => {
                 const file = e.target.files[0];
@@ -874,6 +1068,8 @@
                                         })),
                                         nodes: (day.nodes || []).map(n => ({
                                             ...n,
+                                            time: n.time || '',
+                                            tags: n.tags || '',
                                             children: n.children || [],
                                             subtasks: n.subtasks || []
                                         }))
@@ -907,7 +1103,7 @@
                         <div>
                             <h1 className="text-xl font-bold flex items-center gap-2">
                                 <i className="fas fa-plane-departure w-6 h-6 text-center"></i>
-                                阪神動態規劃系統 (JSON 架構)
+                                動態規劃系統 (JSON 架構)
                             </h1>
                             <p className="text-xs text-slate-400 mt-1">拖曳備忘錄、新增節點、切換方案與天數</p>
                         </div>
@@ -1013,7 +1209,9 @@
                                     />
                                 </div>
                                 <div className="space-y-4">
-                                    {activeDay.nodes.map((node, nodeIndex) => (
+                                    {activeDay.nodes.map((node, nodeIndex) => {
+                                        const nodeStyle = NODE_STYLES[node.type] || DEFAULT_NODE_STYLE;
+                                        return (
                                         <div 
                                             key={node.id} 
                                             className={`relative group ${dragNodeId === node.id ? 'node-dragging' : ''} ${dragOverNodeId === node.id && dragOverPosition === 'top' ? 'node-drag-over' : ''} ${dragOverNodeId === node.id && dragOverPosition === 'bottom' ? 'node-drag-over-bottom' : ''}`}
@@ -1024,19 +1222,40 @@
                                             onDrop={(e) => handleDrop(e, node.id)}
                                             onDragEnd={handleDragEnd}
                                         >
-                                            {/* 時間軸上的點 */}
-                                            <div className="absolute -left-[1.8rem] md:-left-[3.8rem] top-4 w-4 h-4 rounded-full bg-blue-500 border-4 border-white shadow z-10"></div>
+                                            {/* 時間軸上的點與時間輸入 */}
+                                            <div className="absolute -left-[2.5rem] md:-left-[4.5rem] top-3 flex flex-col items-center z-10 w-16">
+                                                <input 
+                                                    type="time" 
+                                                    className="w-full text-xs font-bold text-center text-blue-600 bg-white/80 border border-transparent hover:border-blue-200 focus:border-blue-400 rounded px-1 py-0.5 shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-400 mb-1 transition-colors"
+                                                    style={{ display: 'block' }}
+                                                    value={node.time || ''}
+                                                    onChange={(e) => updateNodeTime(activeDay.id, node.id, e.target.value)}
+                                                />
+                                                <div className="w-4 h-4 rounded-full border-4 border-white shadow" style={{ backgroundColor: nodeStyle.border }}></div>
+                                            </div>
                                             
                                             {/* 節點卡片 */}
-                                            <div className="bg-white border border-slate-200 rounded-lg shadow-sm hover:shadow-md transition-shadow p-3">
+                                            <div 
+                                                className="border rounded-lg shadow-sm hover:shadow-md transition-shadow p-3"
+                                                style={{ backgroundColor: nodeStyle.bg, borderLeft: `5px solid ${nodeStyle.border}`, borderColor: '#e2e8f0' }}
+                                            >
                                                 <div className="flex justify-between items-center mb-2">
                                                     <div className="flex items-center gap-2 w-full">
-                                                        <span className="node-drag-handle p-1 flex items-center justify-center" title="拖曳排序">
-                                                            <i className="fas fa-grip-vertical text-sm"></i>
+                                                        <span className="node-drag-handle p-1 flex items-center justify-center cursor-move" title="拖曳排序">
+                                                            <i className="fas fa-grip-vertical text-slate-400"></i>
                                                         </span>
-                                                        <span className="bg-slate-100 text-slate-500 p-1.5 rounded flex items-center justify-center">
-                                                            <i className="fas fa-map-marker-alt text-xs"></i>
-                                                        </span>
+                                                        <select
+                                                            className="bg-slate-50 text-slate-600 rounded px-1.5 py-1 text-xs font-semibold border border-slate-200 outline-none hover:border-blue-300 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 cursor-pointer shadow-sm transition-colors text-center"
+                                                            value={node.type || 'activity'}
+                                                            onChange={(e) => updateNodeType(activeDay.id, node.id, e.target.value)}
+                                                            title="選擇行程類型 (影響 PDF 匯出圖標與顏色)"
+                                                        >
+                                                            <option value="location">📍 地點</option>
+                                                            <option value="hotel">🏨 住宿</option>
+                                                            <option value="meal">🍽️ 餐食</option>
+                                                            <option value="activity">🎯 活動</option>
+                                                            <option value="transit">🚃 交通</option>
+                                                        </select>
                                                         <input 
                                                             className="font-bold text-lg text-slate-800 bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-blue-300 rounded px-1 w-full"
                                                             value={node.title}
@@ -1047,6 +1266,17 @@
                                                     <button onClick={() => deleteNode(activeDay.id, node.id)} className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity ml-2">
                                                         <i className="fas fa-trash-alt"></i>
                                                     </button>
+                                                </div>
+
+                                                {/* 標籤輸入區 */}
+                                                <div className="flex items-center gap-1.5 mb-2 pl-8">
+                                                    <i className="fas fa-tags text-[10px] text-slate-400"></i>
+                                                    <input 
+                                                        className="text-xs text-slate-500 bg-slate-50 hover:bg-slate-100 focus:bg-white border border-transparent hover:border-slate-200 focus:border-blue-300 rounded px-1.5 py-0.5 w-full transition-colors focus:outline-none"
+                                                        value={node.tags || ''}
+                                                        onChange={(e) => updateNodeTags(activeDay.id, node.id, e.target.value)}
+                                                        placeholder="新增標籤 (例如: 必去、備案)..."
+                                                    />
                                                 </div>
 
                                                 {/* 勾稽備忘錄標籤 */}
@@ -1100,7 +1330,7 @@
                                                         </div>
                                                         <div className="flex gap-3 overflow-x-auto children-scroll pb-2">
                                                             {(node.children || []).map(child => (
-                                                                <div key={child.id} className="flex-shrink-0 w-52 bg-slate-50 border border-slate-200 rounded-lg p-2.5 group/child hover:shadow transition-shadow">
+                                                                <div key={child.id} className="flex-shrink-0 w-52 bg-white border rounded-lg p-2.5 group/child hover:shadow transition-shadow" style={{ borderLeft: `3px solid ${nodeStyle.border}`, borderColor: '#e2e8f0' }}>
                                                                     <div className="flex justify-between items-center mb-1.5">
                                                                         <input 
                                                                             className="font-semibold text-sm text-slate-700 bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-emerald-300 rounded px-1 w-full"
@@ -1141,7 +1371,7 @@
                                                 )}
                                             </div>
                                         </div>
-                                    ))}
+                                    );})}
                                 </div>
 
                                 {/* 新增節點按鈕 */}
@@ -1226,6 +1456,12 @@
                                         className="flex-1 py-2 px-4 border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
                                     >
                                         取消
+                                    </button>
+                                    <button
+                                        onClick={() => exportHTML(pdfSettings)}
+                                        className="flex-1 py-2 px-4 bg-orange-500 hover:bg-orange-400 text-white rounded-lg text-sm font-bold shadow transition-colors flex items-center justify-center gap-2"
+                                    >
+                                        <i className="fas fa-file-code"></i> 匯出 HTML
                                     </button>
                                     <button
                                         onClick={() => exportPDF(pdfSettings)}
