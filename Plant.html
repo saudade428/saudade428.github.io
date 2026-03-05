@@ -16,6 +16,10 @@
     
     <!-- FontAwesome Icons (取代 Lucide，避免 React DOM 衝突) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+
+    <!-- Leaflet JS & CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     
     <!-- html2canvas + jsPDF (PDF 匯出) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -93,17 +97,35 @@
     <script type="text/babel">
         const { useState, useEffect, useRef, useCallback } = React;
 
+        // --- C3: 天氣圖示選項 ---
+        const WEATHER_CONDITIONS = [
+            { value: 'sunny', icon: '☀️', label: '晴天' },
+            { value: 'partly_cloudy', icon: '⛅', label: '多雲' },
+            { value: 'cloudy', icon: '☁️', label: '陰天' },
+            { value: 'rainy', icon: '🌧️', label: '雨天' },
+            { value: 'stormy', icon: '⛈️', label: '雷雨' },
+            { value: 'snowy', icon: '❄️', label: '下雪' },
+            { value: 'windy', icon: '🌬️', label: '強風' },
+            { value: 'hot', icon: '🌡️', label: '酷熱' },
+        ];
+
+        // --- C1: 旅伴顏色 ---
+        const COMPANION_COLORS = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
+
         // --- 預設初始資料 ---
         const initialData = {
             plans: [
                 {
                     id: "plan-a",
                     name: "我的旅程",
+                    companions: [],
                     days: [
                         {
                             id: "day-1",
                             title: "第一天",
                             subtitle: "美好的開始",
+                            journal: "",
+                            weather: { condition: '', tempHigh: '', tempLow: '' },
                             nodes: [
                                 { id: "n1", title: "抵達機場", type: "location", time: "10:00", tags: "第一站", subtasks: [], children: [] },
                                 { id: "n2", title: "飯店 Check-in", type: "hotel", time: "15:00", tags: "住宿", subtasks: [], children: [] }
@@ -387,13 +409,335 @@
             );
         };
 
+        // --- B4: 地圖總覽 Modal ---
+        const MapModal = ({ isOpen, onClose, activePlan }) => {
+            const mapRef = useRef(null);
+            const mapInstance = useRef(null);
+            
+            useEffect(() => {
+                if (!isOpen) return;
+                const plan = activePlan;
+                if (!plan) return;
+
+                // 收集有 lat/lng 的節點
+                const mapNodes = [];
+                plan.days.forEach(day => {
+                    day.nodes.forEach(node => {
+                        const lat = parseFloat(node.lat);
+                        const lng = parseFloat(node.lng);
+                        if (!isNaN(lat) && !isNaN(lng)) {
+                            mapNodes.push({ ...node, lat, lng, dayTitle: day.title });
+                        }
+                    });
+                });
+
+                let center = [23.5, 121];
+                if (mapNodes.length > 0) center = [mapNodes[0].lat, mapNodes[0].lng];
+
+                if (!mapInstance.current && mapRef.current) {
+                    mapInstance.current = L.map(mapRef.current).setView(center, mapNodes.length > 0 ? 10 : 7);
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        attribution: '&copy; OpenStreetMap contributors'
+                    }).addTo(mapInstance.current);
+                }
+
+                const map = mapInstance.current;
+                if (!map) return;
+                
+                // 清除舊圖層
+                map.eachLayer((layer) => {
+                    if (layer instanceof L.Marker || layer instanceof L.Polyline) {
+                        map.removeLayer(layer);
+                    }
+                });
+
+                if (mapNodes.length === 0) return;
+
+                const latlngs = [];
+                mapNodes.forEach((node) => {
+                    const loc = [node.lat, node.lng];
+                    latlngs.push(loc);
+                    
+                    const style = NODE_STYLES[node.type] || DEFAULT_NODE_STYLE;
+                    
+                    // 自訂 Emoji Marker
+                    const customIcon = L.divIcon({
+                        className: 'custom-leaflet-marker',
+                        html: `<div style="background-color: ${style.bg}; border: 2px solid ${style.border}; border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; font-size: 16px; box-shadow: 0 2px 5px rgba(0,0,0,0.3);">${style.icon}</div>`,
+                        iconSize: [30, 30],
+                        iconAnchor: [15, 15],
+                        popupAnchor: [0, -15]
+                    });
+
+                    const marker = L.marker(loc, { icon: customIcon }).addTo(map);
+                    
+                    const popupContent = `
+                        <div style="font-family: sans-serif; min-width: 150px;">
+                            <div style="font-weight: bold; font-size: 14px; margin-bottom: 4px; border-bottom: 2px solid ${style.border}; padding-bottom: 2px;">
+                                ${node.title || '未命名'}
+                            </div>
+                            <div style="font-size: 12px; color: #666; margin-bottom: 2px;">
+                                <span style="font-weight:bold; color:#f59e0b;">${node.dayTitle}</span> ${node.time ? '<span style="color:#2563eb;font-weight:bold;margin-left:5px;">'+node.time+'</span>' : ''}
+                            </div>
+                            ${node.tags ? '<div style="font-size: 10px; color: #888; margin-top:4px;">🏷️ '+node.tags+'</div>' : ''}
+                        </div>
+                    `;
+                    marker.bindPopup(popupContent);
+                });
+
+                if (latlngs.length > 1) {
+                    L.polyline(latlngs, { color: '#3b82f6', weight: 3, dashArray: '5, 10' }).addTo(map);
+                    const bounds = L.latLngBounds(latlngs);
+                    map.fitBounds(bounds, { padding: [50, 50] });
+                }
+
+                // 解決 Leaflet 在 Modal 顯示時 rendering 尺寸不對的問題
+                setTimeout(() => {
+                    map.invalidateSize();
+                    if (latlngs.length > 1) {
+                        map.fitBounds(L.latLngBounds(latlngs), { padding: [50, 50] });
+                    }
+                }, 150);
+            }, [isOpen, activePlan]);
+
+            // 當 modal 關閉時銷毀地圖實例
+            useEffect(() => {
+                if (!isOpen && mapInstance.current) {
+                    mapInstance.current.remove();
+                    mapInstance.current = null;
+                }
+            }, [isOpen]);
+
+            if (!isOpen) return null;
+
+            return (
+                <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4" onClick={onClose}>
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl h-[80vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+                        <div className="bg-gradient-to-r from-sky-500 to-blue-600 text-white px-6 py-4 flex justify-between items-center shrink-0">
+                            <h2 className="text-xl font-bold flex items-center gap-2">
+                                <i className="fas fa-map-marked-alt"></i> 行程地圖總覽
+                            </h2>
+                            <button onClick={onClose} className="text-white/80 hover:text-white text-xl p-1 rounded hover:bg-white/20 transition-colors">
+                                <i className="fas fa-times"></i>
+                            </button>
+                        </div>
+                        <div className="p-4 flex-1 relative bg-slate-50">
+                            {activePlan?.days.flatMap(d => d.nodes).filter(n => !isNaN(parseFloat(n.lat)) && !isNaN(parseFloat(n.lng))).length === 0 && (
+                                <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+                                    <div className="bg-white/90 backdrop-blur px-6 py-4 rounded-xl shadow border border-slate-200 text-center">
+                                        <i className="fas fa-map-pin text-3xl text-slate-300 mb-2"></i>
+                                        <p className="text-slate-600 font-semibold">地圖上目前沒有任何標記</p>
+                                        <p className="text-sm text-slate-500 mt-1">請在行程節點設定「緯度」與「經度」來顯示位置</p>
+                                    </div>
+                                </div>
+                            )}
+                            <div ref={mapRef} className="absolute inset-4 rounded-xl border border-slate-300 shadow-inner z-0"></div>
+                        </div>
+                        <div className="px-6 py-3 bg-slate-100 border-t border-slate-200 text-xs text-slate-500 flex justify-between shrink-0">
+                            <span><i className="fas fa-info-circle text-sky-500 mr-1"></i> 提示：在節點中輸入緯度與經度 (Lat/Lng) 即可在地圖上自動標記與連線。</span>
+                            <span>&copy; OpenStreetMap</span>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- B5: 單點地圖選取 Modal ---
+        const LocationPickerModal = ({ isOpen, nodeData, onClose, onConfirm }) => {
+            const mapRef = useRef(null);
+            const mapInstance = useRef(null);
+            const markerInstance = useRef(null);
+            const [tempPos, setTempPos] = useState(null);
+
+            useEffect(() => {
+                if (!isOpen) return;
+                
+                const initialLat = nodeData && nodeData.lat ? parseFloat(nodeData.lat) : NaN;
+                const initialLng = nodeData && nodeData.lng ? parseFloat(nodeData.lng) : NaN;
+                const hasValidInitial = !isNaN(initialLat) && !isNaN(initialLng);
+                const center = hasValidInitial ? [initialLat, initialLng] : [23.5, 121]; // 預設台灣中心
+                
+                if (!mapInstance.current && mapRef.current) {
+                    mapInstance.current = L.map(mapRef.current).setView(center, hasValidInitial ? 14 : 7);
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        attribution: '&copy; OpenStreetMap contributors'
+                    }).addTo(mapInstance.current);
+
+                    mapInstance.current.on('click', (e) => {
+                        const { lat, lng } = e.latlng;
+                        setTempPos({ lat, lng });
+                        
+                        if (markerInstance.current) {
+                            markerInstance.current.setLatLng([lat, lng]);
+                        } else {
+                            markerInstance.current = L.marker([lat, lng], { draggable: true }).addTo(mapInstance.current);
+                            markerInstance.current.on('dragend', (ev) => {
+                                const pos = ev.target.getLatLng();
+                                setTempPos({ lat: pos.lat, lng: pos.lng });
+                            });
+                        }
+                    });
+                } else if (mapInstance.current) {
+                    mapInstance.current.setView(center, hasValidInitial ? 14 : 7);
+                }
+
+                const map = mapInstance.current;
+                
+                if (hasValidInitial) {
+                    setTempPos({ lat: initialLat, lng: initialLng });
+                    if (!markerInstance.current) {
+                        markerInstance.current = L.marker([initialLat, initialLng], { draggable: true }).addTo(map);
+                        markerInstance.current.on('dragend', (ev) => {
+                            const pos = ev.target.getLatLng();
+                            setTempPos({ lat: pos.lat, lng: pos.lng });
+                        });
+                    } else {
+                        markerInstance.current.setLatLng([initialLat, initialLng]);
+                    }
+                } else {
+                    setTempPos(null);
+                    if (markerInstance.current && map) {
+                        map.removeLayer(markerInstance.current);
+                        markerInstance.current = null;
+                    }
+                }
+
+                setTimeout(() => {
+                    if (mapInstance.current) {
+                        mapInstance.current.invalidateSize();
+                    }
+                }, 150);
+
+            }, [isOpen, nodeData]);
+
+            useEffect(() => {
+                if (!isOpen) {
+                    if (mapInstance.current) {
+                        mapInstance.current.remove();
+                        mapInstance.current = null;
+                        markerInstance.current = null;
+                    }
+                    setTempPos(null);
+                }
+            }, [isOpen]);
+
+            if (!isOpen) return null;
+
+            return (
+                <div className="fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4 transition-opacity" onClick={onClose}>
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl h-[500px] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+                        <div className="bg-slate-800 text-white px-5 py-3 flex justify-between items-center shrink-0">
+                            <h2 className="font-bold flex items-center gap-2">
+                                <i className="fas fa-map-pin text-red-500"></i> 為「{nodeData?.title || '節點'}」選擇位置
+                            </h2>
+                            <button onClick={onClose} className="text-white/70 hover:text-white transition-colors">
+                                <i className="fas fa-times"></i>
+                            </button>
+                        </div>
+                        <div className="p-2 bg-red-50 text-red-800 text-xs font-semibold flex items-center gap-2 shrink-0">
+                            <i className="fas fa-hand-pointer ml-2"></i> 請在地圖上點擊以放置圖釘，或直接拖曳紅色圖釘。
+                        </div>
+                        <div className="relative flex-1 bg-slate-100">
+                            <div ref={mapRef} className="absolute inset-0 z-0"></div>
+                        </div>
+                        <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-between items-center shrink-0">
+                            <div className="text-sm font-mono text-slate-600 bg-white border border-slate-200 px-3 py-1.5 rounded flex-1 mr-4 shadow-sm flex items-center">
+                                {tempPos ? (
+                                    <>Lat: <span className="font-bold text-blue-600 ml-1 mr-3">{tempPos.lat.toFixed(6)}</span> Lng: <span className="font-bold text-blue-600 ml-1">{tempPos.lng.toFixed(6)}</span></>
+                                ) : (
+                                    <span className="text-slate-400 italic">尚未選取任何座標...</span>
+                                )}
+                            </div>
+                            <div className="flex gap-2">
+                                <button onClick={onClose} className="px-4 py-2 rounded text-sm font-semibold text-slate-600 hover:bg-slate-200 transition-colors">
+                                    取消
+                                </button>
+                                <button 
+                                    onClick={() => onConfirm(tempPos?.lat, tempPos?.lng)} 
+                                    disabled={!tempPos}
+                                    className={`px-4 py-2 rounded text-sm font-semibold text-white shadow transition-colors flex items-center gap-1 ${tempPos ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-slate-300 cursor-not-allowed'}`}
+                                >
+                                    <i className="fas fa-check"></i> 確定儲存
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
         // --- 主應用程式元件 ---
         const App = () => {
-            const [data, setData] = useState(initialData);
+            const [data, _setDataRaw] = useState(() => {
+                try {
+                    const saved = localStorage.getItem('travelPlanData');
+                    return saved ? JSON.parse(saved) : initialData;
+                } catch { return initialData; }
+            });
             const [activePlanId, setActivePlanId] = useState(data.plans[0]?.id);
             // activeDayId 如果為 'checklist'，則代表目前正停留在「行前清單」分頁
             const [activeDayId, setActiveDayId] = useState('checklist');
             const [showCorkboard, setShowCorkboard] = useState(false);
+
+            // --- A5: localStorage 自動存檔 ---
+            useEffect(() => {
+                try { localStorage.setItem('travelPlanData', JSON.stringify(data)); }
+                catch(e) { console.warn('localStorage 存檔失敗', e); }
+            }, [data]);
+
+            // --- A3: Undo / Redo (shadow setData) ---
+            const MAX_HISTORY = 50;
+            const dataRef = useRef(data);
+            dataRef.current = data;
+            const historyRef = useRef({ past: [], future: [] });
+            const skipHistoryRef = useRef(false);
+            const [, forceRender] = useState(0);
+
+            const setData = useCallback((newDataOrUpdater) => {
+                _setDataRaw(prev => {
+                    const newData = typeof newDataOrUpdater === 'function' ? newDataOrUpdater(prev) : newDataOrUpdater;
+                    if (!skipHistoryRef.current) {
+                        historyRef.current.past = [...historyRef.current.past, prev].slice(-MAX_HISTORY);
+                        historyRef.current.future = [];
+                    }
+                    skipHistoryRef.current = false;
+                    return newData;
+                });
+                forceRender(n => n + 1);
+            }, []);
+
+            const undo = useCallback(() => {
+                if (historyRef.current.past.length === 0) return;
+                const prevData = historyRef.current.past[historyRef.current.past.length - 1];
+                historyRef.current.past = historyRef.current.past.slice(0, -1);
+                historyRef.current.future = [dataRef.current, ...historyRef.current.future];
+                skipHistoryRef.current = true;
+                _setDataRaw(prevData);
+                forceRender(n => n + 1);
+            }, []);
+
+            const redo = useCallback(() => {
+                if (historyRef.current.future.length === 0) return;
+                const nextData = historyRef.current.future[0];
+                historyRef.current.past = [...historyRef.current.past, dataRef.current];
+                historyRef.current.future = historyRef.current.future.slice(1);
+                skipHistoryRef.current = true;
+                _setDataRaw(nextData);
+                forceRender(n => n + 1);
+            }, []);
+
+            const canUndo = historyRef.current.past.length > 0;
+            const canRedo = historyRef.current.future.length > 0;
+
+            useEffect(() => {
+                const handler = (e) => {
+                    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+                    if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); redo(); }
+                };
+                window.addEventListener('keydown', handler);
+                return () => window.removeEventListener('keydown', handler);
+            }, [undo, redo]);
 
             // 確保有活動方案
             const activePlan = data.plans.find(p => p.id === activePlanId) || data.plans[0];
@@ -407,6 +751,56 @@
             // --- 跨天轉移/互換狀態 ---
             const [isSwappingDay, setIsSwappingDay] = useState(false);
             const [dayToSwap, setDayToSwap] = useState(null);
+
+            // --- A1: 節點收合/展開 ---
+            // --- A1: 節點收合/展開 ---
+            const [collapsedNodes, setCollapsedNodes] = useState(new Set());
+            const toggleNodeCollapse = (nodeId) => {
+                setCollapsedNodes(prev => {
+                    const next = new Set(prev);
+                    next.has(nodeId) ? next.delete(nodeId) : next.add(nodeId);
+                    return next;
+                });
+            };
+            const collapseAll = () => { if (activeDay) setCollapsedNodes(new Set(activeDay.nodes.map(n => n.id))); };
+            const expandAll = () => setCollapsedNodes(new Set());
+
+            // --- A4: 跨天拖曳至 Day Tab ---
+            const [dragOverDayId, setDragOverDayId] = useState(null);
+
+            // --- C3: Google Maps 導航路線產生 ---
+            const openGoogleMapsRoute = (day) => {
+                if (!day || !day.nodes) return;
+                
+                // 收集所有具有 lat/lng 的座標點
+                const waypoints = [];
+                day.nodes.forEach(node => {
+                    if (node.lat && node.lng) waypoints.push(`${node.lat},${node.lng}`);
+                });
+
+                if (waypoints.length === 0) {
+                    alert('目前天數沒有設定任何地圖座標，無法產生路線！\n\n💡 提示：請在節點中點擊「📍」圖示選擇地圖座標。');
+                    return;
+                }
+
+                // Google 導航網址上限通常能吃 10~25 個點，若是超長可以考慮提示
+                if (waypoints.length > 25) {
+                    alert('⚠️ 注意：座標點超過 25 個，Google Maps 可能無法完全載入所有中途停靠點。');
+                }
+
+                const url = `https://www.google.com/maps/dir/${waypoints.join('/')}`;
+                window.open(url, '_blank', 'noopener,noreferrer');
+            };
+
+            // --- 其他 UI 控制邏輯 ---
+            const [showCompare, setShowCompare] = useState(false);
+            const [compareDays, setCompareDays] = useState([null, null]);
+
+            // --- B4: 地圖總覽 Modal ---
+            const [showMapModal, setShowMapModal] = useState(false);
+
+            // --- B5: 單點地圖選取 Modal ---
+            const [locationPickerNode, setLocationPickerNode] = useState(null);
 
             // 切換方案時自動選中行前清單
             const switchPlan = (planId) => {
@@ -459,7 +853,7 @@
 
             // 方案操作
             const addPlan = () => {
-                const newPlan = { id: generateId(), name: `新方案 ${data.plans.length + 1}`, days: [] };
+                const newPlan = { id: generateId(), name: `新方案 ${data.plans.length + 1}`, companions: [], days: [] };
                 setData({ ...data, plans: [...data.plans, newPlan] });
                 setActivePlanId(newPlan.id);
                 setActiveDayId(null);
@@ -468,7 +862,7 @@
             // 天數操作
             const addDay = () => {
                 if (!activePlan) return;
-                const newDay = { id: generateId(), title: `Day ${activePlan.days.length + 1}`, subtitle: '', nodes: [], memos: [] };
+                const newDay = { id: generateId(), title: `Day ${activePlan.days.length + 1}`, subtitle: '', journal: '', weather: { condition: '', tempHigh: '', tempLow: '' }, nodes: [], memos: [] };
                 const updatedPlans = data.plans.map(p => {
                     if (p.id === activePlan.id) return { ...p, days: [...p.days, newDay] };
                     return p;
@@ -527,7 +921,7 @@
                 updatePlans(p => ({
                     ...p,
                     days: p.days.map(d => d.id !== dayId ? d : {
-                        ...d, nodes: [...d.nodes, { id: generateId(), title: "新行程節點 (可編輯)", type: "activity", time: "", tags: "", subtasks: [], children: [] }]
+                        ...d, nodes: [...d.nodes, { id: generateId(), title: "新行程節點 (可編輯)", type: "activity", time: "", tags: "", lat: "", lng: "", subtasks: [], children: [] }]
                     })
                 }));
             };
@@ -614,6 +1008,90 @@
                     days: p.days.map(d => d.id !== dayId ? d : {
                         ...d, nodes: d.nodes.map(n => n.id !== nodeId ? n : {
                             ...n, subtasks: n.subtasks.filter(s => s.id !== subtaskId)
+                        })
+                    })
+                }));
+            };
+
+            // --- A2: 節點複製 ---
+            const duplicateNode = (dayId, nodeId) => {
+                updatePlans(p => ({
+                    ...p,
+                    days: p.days.map(d => {
+                        if (d.id !== dayId) return d;
+                        const idx = d.nodes.findIndex(n => n.id === nodeId);
+                        if (idx === -1) return d;
+                        const cloned = JSON.parse(JSON.stringify(d.nodes[idx]));
+                        const reassignIds = (obj) => {
+                            obj.id = generateId();
+                            if (obj.subtasks) obj.subtasks.forEach(s => { s.id = generateId(); });
+                            if (obj.children) obj.children.forEach(c => { c.id = generateId(); if (c.subtasks) c.subtasks.forEach(s => { s.id = generateId(); }); });
+                        };
+                        reassignIds(cloned);
+                        cloned.title = (cloned.title || '') + ' (複製)';
+                        const nodes = [...d.nodes];
+                        nodes.splice(idx + 1, 0, cloned);
+                        return { ...d, nodes };
+                    })
+                }));
+            };
+
+            // --- C1: 旅伴管理 ---
+            const addCompanion = (name) => {
+                if (!name.trim()) return;
+                const color = COMPANION_COLORS[(activePlan.companions || []).length % COMPANION_COLORS.length];
+                setData(prev => ({
+                    ...prev,
+                    plans: prev.plans.map(p => p.id !== activePlan.id ? p : {
+                        ...p,
+                        companions: [...(p.companions || []), { id: generateId(), name: name.trim(), color }]
+                    })
+                }));
+            };
+            const deleteCompanion = (compId) => {
+                setData(prev => ({
+                    ...prev,
+                    plans: prev.plans.map(p => p.id !== activePlan.id ? p : {
+                        ...p,
+                        companions: (p.companions || []).filter(c => c.id !== compId),
+                        days: p.days.map(d => ({
+                            ...d,
+                            nodes: d.nodes.map(n => ({
+                                ...n,
+                                paidBy: n.paidBy === compId ? '' : n.paidBy,
+                                splitAmong: (n.splitAmong || []).filter(id => id !== compId)
+                            }))
+                        }))
+                    })
+                }));
+            };
+            const renameCompanion = (compId, newName) => {
+                setData(prev => ({
+                    ...prev,
+                    plans: prev.plans.map(p => p.id !== activePlan.id ? p : {
+                        ...p,
+                        companions: (p.companions || []).map(c => c.id === compId ? { ...c, name: newName } : c)
+                    })
+                }));
+            };
+            const updateNodePaidBy = (dayId, nodeId, compId) => {
+                updatePlans(p => ({
+                    ...p,
+                    days: p.days.map(d => d.id !== dayId ? d : {
+                        ...d,
+                        nodes: d.nodes.map(n => n.id !== nodeId ? n : { ...n, paidBy: compId })
+                    })
+                }));
+            };
+            const toggleNodeSplitAmong = (dayId, nodeId, compId) => {
+                updatePlans(p => ({
+                    ...p,
+                    days: p.days.map(d => d.id !== dayId ? d : {
+                        ...d,
+                        nodes: d.nodes.map(n => {
+                            if (n.id !== nodeId) return n;
+                            const list = n.splitAmong || [];
+                            return { ...n, splitAmong: list.includes(compId) ? list.filter(id => id !== compId) : [...list, compId] };
                         })
                     })
                 }));
@@ -844,15 +1322,17 @@
                 }));
             };
 
-            // 計算核對清單進度
+            // 計算核對清單進度 (排除純文字備註)
             const getChecklistProgress = () => {
                 if (!currentChecklists.length) return 0;
                 let total = 0;
                 let checked = 0;
                 currentChecklists.forEach(c => {
                     c.items.forEach(i => {
-                        total++;
-                        if (i.isChecked) checked++;
+                        if (!i.isNote) { // 只有非備註項目才計入進度
+                            total++;
+                            if (i.isChecked) checked++;
+                        }
                     });
                 });
                 return total === 0 ? 0 : Math.round((checked / total) * 100);
@@ -971,10 +1451,36 @@
                 
                 const dayExpenseHeaderHtml = dayExpensesHtml ? `<div style="display:flex;align-items:center;background:#fff;padding:4px 8px;border-radius:6px;border:1px solid #cbd5e1;"><span style="font-size:11px;color:#64748b;margin-right:2px;font-weight:bold;">單日花費:</span>${dayExpensesHtml}</div>` : '';
 
+                // 新增：天氣與選單統計
+                const wIcon = day.weather?.condition ? (WEATHER_CONDITIONS.find(w => w.value === day.weather.condition) || {}).icon : '';
+                const weatherHtml = day.weather?.condition ? `<div style="display:inline-flex;align-items:center;gap:6px;background:#eff6ff;padding:4px 10px;border-radius:12px;font-size:12px;color:#3b82f6;border:1px solid #bfdbfe;margin-top:6px;">${wIcon} ${day.weather.tempHigh ? day.weather.tempHigh + '°C' : ''}${day.weather.tempLow ? ' / ' + day.weather.tempLow + '°C' : ''}</div>` : '';
+
+                const nodeCount = day.nodes.length;
+                const typeCounts = day.nodes.reduce((acc, n) => { acc[n.type] = (acc[n.type] || 0) + 1; return acc; }, {});
+                let subTotal = 0, subDone = 0;
+                day.nodes.forEach(n => {
+                    subTotal += n.subtasks.length;
+                    subDone += n.subtasks.filter(s => s.isCompleted).length;
+                    (n.children || []).forEach(c => {
+                        subTotal += c.subtasks.length;
+                        subDone += c.subtasks.filter(s => s.isCompleted).length;
+                    });
+                });
+                const subProgress = subTotal === 0 ? 0 : Math.round((subDone / subTotal) * 100);
+                const dayMemosCount = day.memos ? day.memos.length : 0;
+                const statsHtml = `<div style="display:flex;gap:12px;font-size:11px;color:#64748b;margin-top:8px;">
+                    <span style="display:flex;align-items:center;gap:4px;"><span style="font-size:12px;">📌</span>${nodeCount} 節點</span>
+                    ${Object.entries(typeCounts).map(([type, count]) => `<span style="display:flex;align-items:center;gap:4px;">${(NODE_STYLES[type] || DEFAULT_NODE_STYLE).icon} ${count}</span>`).join('')}
+                    ${subTotal > 0 ? `<span style="display:flex;align-items:center;gap:4px;"><span style="font-size:12px;">✅</span>任務 ${subProgress}%</span>` : ''}
+                    ${dayMemosCount > 0 ? `<span style="display:flex;align-items:center;gap:4px;"><span style="font-size:12px;">🗒️</span>${dayMemosCount} 備忘</span>` : ''}
+                </div>`;
+
                 dayHeader.innerHTML = `
                     <div>
                         <div style="font-size:22px;font-weight:bold;color:#1e293b;">📅 ${day.title}</div>
                         ${day.subtitle ? `<div style="font-size:13px;color:#64748b;font-weight:500;margin-top:2px;">${day.subtitle}</div>` : ''}
+                        ${weatherHtml}
+                        ${statsHtml}
                     </div>
                     ${dayExpenseHeaderHtml}
                 `;
@@ -1019,7 +1525,13 @@
                                 <span style="font-size:15px;font-weight:bold;color:#1e293b;">${node.endPoint || '終點'}</span>
                             </div>${tagsHTML}`;
                     } else {
-                        titleRow.innerHTML = `<span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:${ns.border};font-size:14px;flex-shrink:0;text-align:center;">${ns.icon}</span>${timeHTML}<span style="font-size:16px;font-weight:bold;color:#1e293b;flex:1;">${node.title || '未命名節點'}</span>${tagsHTML}<span style="font-size:10px;color:${ns.border};background:${ns.bg};border:1px solid ${ns.border};border-radius:10px;padding:2px 8px;font-weight:600;flex-shrink:0;">${ns.label}</span>`;
+                        let mapLinkHtml = '';
+                        if (node.lat && node.lng) {
+                            mapLinkHtml = `<a href="https://www.google.com/maps?q=${node.lat},${node.lng}" style="font-size:11px;color:#3b82f6;text-decoration:none;margin-left:8px;font-weight:bold;">📍 地圖</a>`;
+                        } else {
+                            mapLinkHtml = `<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(node.title)}" style="font-size:11px;color:#64748b;text-decoration:none;margin-left:8px;">🗺️ 尋找</a>`;
+                        }
+                        titleRow.innerHTML = `<span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:${ns.border};font-size:14px;flex-shrink:0;text-align:center;">${ns.icon}</span>${timeHTML}<span style="font-size:16px;font-weight:bold;color:#1e293b;flex:1;">${node.title || '未命名節點'}${mapLinkHtml}</span>${tagsHTML}<span style="font-size:10px;color:${ns.border};background:${ns.bg};border:1px solid ${ns.border};border-radius:10px;padding:2px 8px;font-weight:600;flex-shrink:0;">${ns.label}</span>`;
                     }
                     card.appendChild(titleRow);
 
@@ -1040,8 +1552,11 @@
                         subContainer.style.cssText = `margin:6px 0 0 36px;padding-left:10px;border-left:2px dashed ${ns.border}40;`;
                         node.subtasks.forEach(sub => {
                             const subEl = document.createElement('div');
-                            subEl.style.cssText = 'font-size:13px;color:#475569;margin:4px 0;white-space:pre-wrap;';
-                            subEl.textContent = '⏱ ' + sub.text;
+                            const textColor = sub.isCompleted ? '#94a3b8' : '#475569';
+                            const textDecor = sub.isCompleted ? 'line-through' : 'none';
+                            const icon = sub.isCompleted ? '☑️' : '🔲';
+                            subEl.style.cssText = `font-size:13px;color:${textColor};text-decoration:${textDecor};margin:4px 0;white-space:pre-wrap;display:flex;align-items:flex-start;gap:6px;`;
+                            subEl.innerHTML = `<span style="font-size:12px;margin-top:2px;">${icon}</span><span style="flex:1;line-height:1.4;">${sub.text}</span>`;
                             subContainer.appendChild(subEl);
                         });
                         card.appendChild(subContainer);
@@ -1072,8 +1587,11 @@
                             childCard.innerHTML = `<div style="font-size:13px;font-weight:600;color:${ns.border};margin-bottom:2px;">${child.title}</div>`;
                             child.subtasks.forEach(cs => {
                                 const csEl = document.createElement('div');
-                                csEl.style.cssText = 'font-size:11px;color:#64748b;margin-top:2px;padding-left:6px;border-left:2px dashed #cbd5e140;white-space:pre-wrap;';
-                                csEl.textContent = cs.text;
+                                const textColor = cs.isCompleted ? '#94a3b8' : '#64748b';
+                                const textDecor = cs.isCompleted ? 'line-through' : 'none';
+                                const icon = cs.isCompleted ? '☑️' : '🔲';
+                                csEl.style.cssText = `font-size:11px;color:${textColor};text-decoration:${textDecor};margin-top:2px;padding-left:6px;border-left:2px dashed #cbd5e140;white-space:pre-wrap;display:flex;align-items:flex-start;gap:4px;`;
+                                csEl.innerHTML = `<span style="font-size:10px;margin-top:1px;">${icon}</span><span style="flex:1;line-height:1.4;">${cs.text}</span>`;
                                 childCard.appendChild(csEl);
                             });
                             childRow.appendChild(childCard);
@@ -1114,6 +1632,19 @@
                     container.appendChild(memoSection);
                 }
 
+                // 旅行日誌
+                if (day.journal) {
+                    const journalSection = document.createElement('div');
+                    journalSection.style.cssText = 'margin-top:24px;padding:16px;background:#fefce8;border:1px dashed #fbbf24;border-radius:8px;';
+                    journalSection.innerHTML = `
+                        <div style="font-size:14px;font-weight:bold;color:#92400e;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                            <span>📖</span> 旅行日誌
+                        </div>
+                        <div style="font-size:13px;color:#78350f;white-space:pre-wrap;line-height:1.6;">${day.journal}</div>
+                    `;
+                    container.appendChild(journalSection);
+                }
+
                 // 頁尾
                 const footerLine = document.createElement('div');
                 footerLine.style.cssText = 'margin-top:24px;border-top:1px solid #e2e8f0;padding-top:8px;';
@@ -1142,8 +1673,10 @@
                 let checkedItems = 0;
                 (plan.checklists || []).forEach(c => {
                     c.items.forEach(i => {
-                        totalItems++;
-                        if (i.isChecked) checkedItems++;
+                        if (!i.isNote) {
+                            totalItems++;
+                            if (i.isChecked) checkedItems++;
+                        }
                     });
                 });
                 const progress = totalItems === 0 ? 0 : Math.round((checkedItems / totalItems) * 100);
@@ -1191,14 +1724,23 @@
                                 const itemRow = document.createElement('div');
                                 itemRow.style.cssText = 'display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;';
                                 
-                                const checkIcon = item.isChecked ? '☑️' : '🔲';
-                                const textDecoration = item.isChecked ? 'line-through' : 'none';
-                                const textColor = item.isChecked ? '#94a3b8' : '#334155';
-                                
-                                itemRow.innerHTML = `
-                                    <span style="font-size:14px;margin-top:2px;">${checkIcon}</span>
-                                    <span style="font-size:14px;color:${textColor};text-decoration:${textDecoration};line-height:1.4;">${item.text}</span>
-                                `;
+                                if (item.isNote) {
+                                    // 純文字備註樣式
+                                    itemRow.innerHTML = `
+                                        <span style="font-size:14px;margin-top:2px;">📌</span>
+                                        <span style="font-size:14px;color:#0f172a;font-weight:500;line-height:1.4;">${item.text}</span>
+                                    `;
+                                } else {
+                                    // 待辦項目樣式
+                                    const checkIcon = item.isChecked ? '☑️' : '🔲';
+                                    const textDecoration = item.isChecked ? 'line-through' : 'none';
+                                    const textColor = item.isChecked ? '#94a3b8' : '#334155';
+                                    
+                                    itemRow.innerHTML = `
+                                        <span style="font-size:14px;margin-top:2px;">${checkIcon}</span>
+                                        <span style="font-size:14px;color:${textColor};text-decoration:${textDecoration};line-height:1.4;">${item.text}</span>
+                                    `;
+                                }
                                 catCard.appendChild(itemRow);
                             });
                         }
@@ -1429,9 +1971,12 @@ ${pages.join('\n')}
                                 ...importedData,
                                 plans: importedData.plans.map(plan => ({
                                     ...plan,
+                                    companions: plan.companions || [],
                                     days: (plan.days || []).map(day => ({
                                         ...day,
                                         subtitle: day.subtitle || '',
+                                        journal: day.journal || '',
+                                        weather: day.weather || { condition: '', tempHigh: '', tempLow: '' },
                                         memos: (day.memos || []).map(m => ({
                                             x: 50, y: 150, width: 224, height: null,
                                             title: 'MEMO', text: '', color: 'bg-yellow-200',
@@ -1442,6 +1987,10 @@ ${pages.join('\n')}
                                             ...n,
                                             time: n.time || '',
                                             tags: n.tags || '',
+                                            lat: n.lat || '',
+                                            lng: n.lng || '',
+                                            paidBy: n.paidBy || '',
+                                            splitAmong: n.splitAmong || [],
                                             children: n.children || [],
                                             subtasks: n.subtasks || []
                                         }))
@@ -1462,6 +2011,58 @@ ${pages.join('\n')}
                 };
                 reader.readAsText(file);
                 e.target.value = ''; // 重置 file input，允許重複匯入同一檔案
+            };
+
+            // --- C2: 唯讀分享匯出 ---
+            const shareExport = () => {
+                if (!activePlan) return;
+                const wIcon = (cond) => (WEATHER_CONDITIONS.find(w => w.value === cond) || {}).icon || '';
+                const nodeColor = (type) => (NODE_STYLES[type] || DEFAULT_NODE_STYLE).border;
+                const html = `<!DOCTYPE html>
+<html lang="zh-TW"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${activePlan.name} - 行程分享</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#f1f5f9;color:#334155;line-height:1.6}
+.container{max-width:800px;margin:0 auto;padding:24px 16px}
+.header{text-align:center;padding:40px 20px;background:linear-gradient(135deg,#1e293b,#334155);color:white;border-radius:16px;margin-bottom:32px}
+.header h1{font-size:28px;margin-bottom:4px}
+.header p{color:#94a3b8;font-size:14px}
+.day-card{background:white;border-radius:12px;padding:24px;margin-bottom:24px;box-shadow:0 1px 3px rgba(0,0,0,.1)}
+.day-title{font-size:20px;font-weight:700;margin-bottom:4px}
+.day-sub{color:#64748b;font-size:14px;margin-bottom:12px}
+.weather{display:inline-flex;align-items:center;gap:6px;background:#eff6ff;padding:4px 12px;border-radius:20px;font-size:13px;color:#3b82f6;margin-bottom:12px}
+.node{border-left:4px solid #94a3b8;padding:8px 12px;margin-bottom:8px;border-radius:0 8px 8px 0;background:#f8fafc}
+.node-time{font-size:12px;color:#3b82f6;font-weight:700;font-family:monospace}
+.node-title{font-weight:600;font-size:15px}
+.node-tags{font-size:12px;color:#64748b;margin-top:2px}
+.node-cost{font-size:12px;color:#2563eb;margin-top:2px}
+.journal{background:#fefce8;border:1px dashed #fbbf24;border-radius:8px;padding:12px;margin-top:16px;font-size:13px;color:#92400e;white-space:pre-wrap}
+.footer{text-align:center;color:#94a3b8;font-size:12px;margin-top:32px;padding:16px}
+@media print{body{background:white}.container{padding:0}.header{break-after:avoid}}
+</style></head><body><div class="container">
+<div class="header"><h1>${activePlan.name}</h1><p>行程分享</p></div>
+${activePlan.days.map(day => `
+<div class="day-card">
+<div class="day-title">${day.title}</div>
+${day.subtitle ? `<div class="day-sub">${day.subtitle}</div>` : ''}
+${day.weather?.condition ? `<div class="weather">${wIcon(day.weather.condition)} ${day.weather.tempHigh ? day.weather.tempHigh + '°' : ''}${day.weather.tempLow ? ' / ' + day.weather.tempLow + '°' : ''}</div>` : ''}
+${day.nodes.map(n => `
+<div class="node" style="border-left-color:${nodeColor(n.type)}">
+${n.time ? `<span class="node-time">${n.time}</span> ` : ''}<span class="node-title">${n.title || '未命名'}</span>
+${n.tags ? `<div class="node-tags">🏷️ ${n.tags}</div>` : ''}
+${n.cost ? `<div class="node-cost">${n.currency || ''} ${parseFloat(n.cost).toLocaleString()}</div>` : ''}
+</div>`).join('')}
+${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
+</div>`).join('')}
+<div class="footer">由 TravelItinerary_Pro 產生</div>
+</div></body></html>`;
+                const blob = new Blob([html], { type: 'text/html' });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = `${activePlan.name}_分享.html`;
+                a.click();
+                URL.revokeObjectURL(a.href);
             };
 
             return (
@@ -1518,6 +2119,14 @@ ${pages.join('\n')}
 
                 {/* --- 按鈕列 --- */}
                 <div className="flex gap-2 relative flex-wrap justify-center lg:justify-end w-full lg:w-auto">
+                    {/* Undo / Redo 按鈕 */}
+                    <button onClick={undo} disabled={!canUndo} className={`px-2.5 py-1.5 rounded text-sm font-semibold shadow flex items-center gap-1 shrink-0 ${canUndo ? 'bg-slate-600 hover:bg-slate-500 text-white' : 'bg-slate-700/50 text-slate-500 cursor-not-allowed'}`} title="復原 (Ctrl+Z)">
+                        <i className="fas fa-undo"></i>
+                    </button>
+                    <button onClick={redo} disabled={!canRedo} className={`px-2.5 py-1.5 rounded text-sm font-semibold shadow flex items-center gap-1 shrink-0 ${canRedo ? 'bg-slate-600 hover:bg-slate-500 text-white' : 'bg-slate-700/50 text-slate-500 cursor-not-allowed'}`} title="重做 (Ctrl+Y)">
+                        <i className="fas fa-redo"></i>
+                    </button>
+                    <div className="w-[1px] h-6 bg-slate-600 self-center shrink-0"></div>
                     <button onClick={() => setShowCorkboard(true)} className="bg-purple-600 hover:bg-purple-500 text-white px-3 py-1.5 rounded text-sm font-semibold shadow flex items-center gap-1 shrink-0">
                         <i className="fas fa-thumbtack"></i> 備忘錄黑板
                     </button>
@@ -1538,6 +2147,15 @@ ${pages.join('\n')}
                     </label>
                     <button onClick={exportJSON} className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded text-sm font-semibold shadow flex items-center gap-1 shrink-0">
                         <i className="fas fa-download"></i> 匯出 JSON
+                    </button>
+                    <button onClick={() => setShowMapModal(true)} className="bg-sky-600 hover:bg-sky-500 text-white px-3 py-1.5 rounded text-sm font-semibold shadow flex items-center gap-1 shrink-0">
+                        <i className="fas fa-map-marked-alt"></i> 地圖
+                    </button>
+                    <button onClick={() => setShowCompare(true)} className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded text-sm font-semibold shadow flex items-center gap-1 shrink-0">
+                        <i className="fas fa-columns"></i> 對比
+                    </button>
+                    <button onClick={shareExport} className="bg-teal-600 hover:bg-teal-500 text-white px-3 py-1.5 rounded text-sm font-semibold shadow flex items-center gap-1 shrink-0">
+                        <i className="fas fa-share-alt"></i> 分享
                     </button>
                     <button 
                         onClick={activeDayId === 'checklist' ? () => alert('行前清單模式下無法匯出 PDF，請切換至一般行程') : () => setShowPdfSettings(true)} 
@@ -1615,14 +2233,38 @@ ${pages.join('\n')}
                                 <i className="fas fa-clipboard-check"></i>
                                 行前清單
                             </button>
+                            <button
+                                onClick={() => setActiveDayId('split')}
+                                className={`group/day px-4 py-1.5 rounded-full text-sm font-bold transition-colors whitespace-nowrap flex items-center gap-1.5 mr-1 ${activeDayId === 'split' ? 'bg-emerald-100 text-emerald-700 shadow border border-emerald-200' : 'bg-slate-50 text-slate-500 hover:bg-slate-100 border border-slate-200'}`}
+                            >
+                                <i className="fas fa-calculator"></i>
+                                分帳
+                            </button>
+                            <button
+                                onClick={() => setActiveDayId('budget')}
+                                className={`group/day px-4 py-1.5 rounded-full text-sm font-bold transition-colors whitespace-nowrap flex items-center gap-1.5 mr-1 ${activeDayId === 'budget' ? 'bg-indigo-100 text-indigo-700 shadow border border-indigo-200' : 'bg-slate-50 text-slate-500 hover:bg-slate-100 border border-slate-200'}`}
+                            >
+                                <i className="fas fa-chart-pie"></i>
+                                預算
+                            </button>
+                            <button
+                                onClick={() => setActiveDayId('gantt')}
+                                className={`group/day px-4 py-1.5 rounded-full text-sm font-bold transition-colors whitespace-nowrap flex items-center gap-1.5 mr-1 ${activeDayId === 'gantt' ? 'bg-orange-100 text-orange-700 shadow border border-orange-200' : 'bg-slate-50 text-slate-500 hover:bg-slate-100 border border-slate-200'}`}
+                            >
+                                <i className="fas fa-stream"></i>
+                                甘特圖
+                            </button>
                             <div className="w-[1px] h-6 bg-slate-300 mr-1"></div>
 
                             {activePlan.days.map((day, idx) => (
                                 <div key={day.id} className="flex items-center gap-0.5 relative group/daywrapper">
                                     <button 
                                         onClick={() => setActiveDayId(day.id)}
-                                        className={`group/day px-3 py-1.5 rounded-full text-sm font-medium transition-colors whitespace-nowrap max-w-[200px] flex items-center gap-1 ${activeDayId === day.id ? 'bg-slate-800 text-white shadow' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                        className={`group/day px-3 py-1.5 rounded-full text-sm font-medium transition-all whitespace-nowrap max-w-[200px] flex items-center gap-1 ${activeDayId === day.id ? 'bg-slate-800 text-white shadow' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'} ${dragOverDayId === day.id ? 'ring-2 ring-blue-400 ring-offset-1 scale-105' : ''}`}
                                         title={day.subtitle ? `${day.title} ${day.subtitle}` : day.title}
+                                        onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOverDayId(day.id); }}
+                                        onDragLeave={() => setDragOverDayId(null)}
+                                        onDrop={(e) => { e.preventDefault(); if (dragNodeId && activeDay && activeDay.id !== day.id) { moveNodeToDay(dragNodeId, activeDay.id, day.id); } setDragOverDayId(null); handleDragEnd(); }}
                                     >
                                         <i className="far fa-calendar-alt"></i>
                                         <span className="truncate">{day.title}{day.subtitle ? ` ${day.subtitle}` : ''}</span>
@@ -1698,6 +2340,54 @@ ${pages.join('\n')}
                                         }}
                                         placeholder="副標題（例：機場 - 飯店）"
                                     />
+                                </div>
+                                {/* C3: 天氣速查卡片 */}
+                                <div className="flex items-center gap-2 mb-3 bg-gradient-to-r from-blue-50 to-sky-50 border border-blue-100 rounded-lg px-3 py-2">
+                                    <select
+                                        className="text-lg bg-transparent border-none outline-none cursor-pointer"
+                                        value={activeDay.weather?.condition || ''}
+                                        onChange={(e) => updatePlans(p => ({ ...p, days: p.days.map(d => d.id === activeDay.id ? { ...d, weather: { ...d.weather, condition: e.target.value } } : d) }))}
+                                    >
+                                        <option value="">☁️</option>
+                                        {WEATHER_CONDITIONS.map(w => <option key={w.value} value={w.value}>{w.icon} {w.label}</option>)}
+                                    </select>
+                                    <div className="flex items-center gap-1">
+                                        <i className="fas fa-temperature-high text-red-400 text-xs"></i>
+                                        <input
+                                            className="w-12 text-sm text-center bg-white/70 border border-blue-200 rounded px-1 py-0.5 focus:outline-none focus:border-blue-400"
+                                            value={activeDay.weather?.tempHigh || ''}
+                                            onChange={(e) => updatePlans(p => ({ ...p, days: p.days.map(d => d.id === activeDay.id ? { ...d, weather: { ...d.weather, tempHigh: e.target.value } } : d) }))}
+                                            placeholder="高°C"
+                                        />
+                                    </div>
+                                    <span className="text-slate-300 text-xs">/</span>
+                                    <div className="flex items-center gap-1">
+                                        <i className="fas fa-temperature-low text-blue-400 text-xs"></i>
+                                        <input
+                                            className="w-12 text-sm text-center bg-white/70 border border-blue-200 rounded px-1 py-0.5 focus:outline-none focus:border-blue-400"
+                                            value={activeDay.weather?.tempLow || ''}
+                                            onChange={(e) => updatePlans(p => ({ ...p, days: p.days.map(d => d.id === activeDay.id ? { ...d, weather: { ...d.weather, tempLow: e.target.value } } : d) }))}
+                                            placeholder="低°C"
+                                        />
+                                    </div>
+                                    {activeDay.weather?.condition && (
+                                        <span className="ml-auto text-xs text-sky-600 font-medium">
+                                            {WEATHER_CONDITIONS.find(w => w.value === activeDay.weather.condition)?.label || ''}
+                                        </span>
+                                    )}
+                                </div>
+                                {/* A1: 收合/展開工具列 & C3 導航按鈕 */}
+                                <div className="flex items-center gap-2 mb-3 flex-wrap">
+                                    <button onClick={collapseAll} className="text-xs text-slate-500 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 px-2.5 py-1 rounded-full font-medium flex items-center gap-1 transition-colors border border-slate-200">
+                                        <i className="fas fa-compress-alt text-[10px]"></i> 全部收合
+                                    </button>
+                                    <button onClick={expandAll} className="text-xs text-slate-500 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 px-2.5 py-1 rounded-full font-medium flex items-center gap-1 transition-colors border border-slate-200">
+                                        <i className="fas fa-expand-alt text-[10px]"></i> 全部展開
+                                    </button>
+                                    <button onClick={() => openGoogleMapsRoute(activeDay)} className="text-xs text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-full font-medium flex items-center gap-1 transition-colors border border-blue-200 ml-auto sm:ml-2 shadow-sm">
+                                        🗺️ 開啟本日導航 <i className="fas fa-external-link-alt text-[10px] ml-0.5"></i>
+                                    </button>
+                                    <span className="text-[10px] text-slate-400 ml-auto sm:ml-0 hidden sm:inline">│ {activeDay.nodes.length} 個節點</span>
                                 </div>
                                 <div className="space-y-4">
                                     {activeDay.nodes.map((node, nodeIndex) => {
@@ -1847,11 +2537,18 @@ ${pages.join('\n')}
                                                                             ))}
                                                                         </select>
                                                                     )}
+                                                                    <button onClick={() => duplicateNode(activeDay.id, node.id)} className="text-slate-300 hover:text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" title="複製節點">
+                                                                        <i className="fas fa-copy"></i>
+                                                                    </button>
+                                                                    <button onClick={() => toggleNodeCollapse(node.id)} className="text-slate-300 hover:text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity" title={collapsedNodes.has(node.id) ? '展開' : '收合'}>
+                                                                        <i className={`fas ${collapsedNodes.has(node.id) ? 'fa-chevron-down' : 'fa-chevron-up'}`}></i>
+                                                                    </button>
                                                                     <button onClick={() => deleteNode(activeDay.id, node.id)} className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
                                                                         <i className="fas fa-trash-alt"></i>
                                                                     </button>
                                                                 </div>
                                                             </div>
+                                                        {!collapsedNodes.has(node.id) && (
                                                         <div className="flex items-center gap-2 pl-[4.5rem] pr-6 mb-3 opacity-60 focus-within:opacity-100 transition-opacity">
                                                             <div className="flex-1 flex gap-2">
                                                                 <input 
@@ -1868,11 +2565,15 @@ ${pages.join('\n')}
                                                                 />
                                                             </div>
                                                         </div>
+                                                        )}
                                                     </div>
                                                 ) : (
                                                     // === 預設節點視覺 ===
                                                     <div className="flex justify-between items-center mb-2">
                                                         <div className="flex items-center gap-2 w-full">
+                                                            <button onClick={() => toggleNodeCollapse(node.id)} className="p-1 text-slate-400 hover:text-slate-600 transition-colors" title={collapsedNodes.has(node.id) ? '展開' : '收合'}>
+                                                                <i className={`fas ${collapsedNodes.has(node.id) ? 'fa-chevron-right' : 'fa-chevron-down'} text-xs`}></i>
+                                                            </button>
                                                             <span className="node-drag-handle p-1 flex items-center justify-center cursor-move" title="拖曳排序">
                                                                 <i className="fas fa-grip-vertical text-slate-400"></i>
                                                             </span>
@@ -1942,6 +2643,9 @@ ${pages.join('\n')}
                                                                     ))}
                                                                 </select>
                                                             )}
+                                                            <button onClick={() => duplicateNode(activeDay.id, node.id)} className="text-slate-300 hover:text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity mr-1" title="複製節點">
+                                                                <i className="fas fa-copy"></i>
+                                                            </button>
                                                             <button onClick={() => deleteNode(activeDay.id, node.id)} className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
                                                                 <i className="fas fa-trash-alt"></i>
                                                             </button>
@@ -1949,6 +2653,8 @@ ${pages.join('\n')}
                                                     </div>
                                                 )}
 
+                                                {!collapsedNodes.has(node.id) && (
+                                                <>
                                                 {/* 標籤輸入區 */}
                                                 <div className="flex items-center gap-1.5 mb-2 pl-8">
                                                     <i className="fas fa-tags text-[10px] text-slate-400"></i>
@@ -1958,6 +2664,37 @@ ${pages.join('\n')}
                                                         onChange={(e) => updateNodeTags(activeDay.id, node.id, e.target.value)}
                                                         placeholder="新增標籤 (例如: 必去、備案)..."
                                                     />
+                                                </div>
+
+                                                {/* 座標輸入區 */}
+                                                <div className="flex items-center gap-1.5 mb-2 pl-8">
+                                                    <i className="fas fa-map-marker-alt text-[10px] text-red-500"></i>
+                                                    <input 
+                                                        type="number" step="any"
+                                                        className="text-xs text-slate-500 bg-slate-50 hover:bg-slate-100 focus:bg-white border border-transparent hover:border-slate-200 focus:border-blue-300 rounded px-1.5 py-0.5 w-24 transition-colors focus:outline-none"
+                                                        value={node.lat || ''}
+                                                        onChange={(e) => updatePlans(p => ({ ...p, days: p.days.map(d => d.id === activeDay.id ? { ...d, nodes: d.nodes.map(n => n.id === node.id ? { ...n, lat: e.target.value } : n) } : d) }))}
+                                                        placeholder="緯度 (Lat)"
+                                                    />
+                                                    <input 
+                                                        type="number" step="any"
+                                                        className="text-xs text-slate-500 bg-slate-50 hover:bg-slate-100 focus:bg-white border border-transparent hover:border-slate-200 focus:border-blue-300 rounded px-1.5 py-0.5 w-24 transition-colors focus:outline-none"
+                                                        value={node.lng || ''}
+                                                        onChange={(e) => updatePlans(p => ({ ...p, days: p.days.map(d => d.id === activeDay.id ? { ...d, nodes: d.nodes.map(n => n.id === node.id ? { ...n, lng: e.target.value } : n) } : d) }))}
+                                                        placeholder="經度 (Lng)"
+                                                    />
+                                                    <button 
+                                                        onClick={() => setLocationPickerNode({ dayId: activeDay.id, nodeId: node.id, lat: node.lat, lng: node.lng, title: node.title })}
+                                                        className="text-[10px] text-white bg-slate-400 hover:bg-sky-500 px-1.5 py-0.5 rounded shadow-sm transition-colors flex items-center gap-1 focus:outline-none ml-1"
+                                                        title="在地圖上點選座標"
+                                                    >
+                                                        <i className="fas fa-map-pin"></i> 選取
+                                                    </button>
+                                                    <a 
+                                                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(node.title)}`}
+                                                        target="_blank" rel="noreferrer"
+                                                        className="text-[10px] text-blue-500 hover:underline ml-1"
+                                                    >尋找</a>
                                                 </div>
 
                                                 {/* 勾稽備忘錄標籤 */}
@@ -2050,6 +2787,8 @@ ${pages.join('\n')}
                                                         </div>
                                                     </div>
                                                 )}
+                                            </>
+                                            )}
                                             </div>
                                         </div>
                                     );})}
@@ -2062,11 +2801,81 @@ ${pages.join('\n')}
                                         <i className="fas fa-plus"></i> 新增行程節點
                                     </button>
                                 </div>
+
+                                {/* --- B3: 單日花費統計列 --- */}
+                                {(() => {
+                                    const allNodes = activeDay.nodes.reduce((acc, n) => acc.concat([n], n.children || []), []);
+                                    const totalNodes = allNodes.length;
+                                    if (totalNodes === 0) return null;
+
+                                    const typeCounts = allNodes.reduce((acc, n) => { acc[n.type] = (acc[n.type] || 0) + 1; return acc; }, {});
+                                    const totalSubtasks = allNodes.reduce((sum, n) => sum + (n.subtasks?.length || 0), 0);
+                                    const dayMemos = currentMemos.filter(m => m.dayId === activeDay.id).length;
+                                    
+                                    const currencyTotals = allNodes.reduce((acc, n) => {
+                                        if (n.cost && n.currency) acc[n.currency] = (acc[n.currency] || 0) + parseFloat(n.cost);
+                                        return acc;
+                                    }, {});
+
+                                    return (
+                                        <div className="mt-8 bg-slate-50 border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between text-sm">
+                                            <div className="flex flex-wrap items-center gap-4 text-slate-600">
+                                                <div className="flex items-center gap-1.5 font-medium">
+                                                    <i className="fas fa-layer-group text-blue-500"></i> {totalNodes} 節點
+                                                </div>
+                                                <div className="h-4 w-px bg-slate-300 hidden sm:block"></div>
+                                                <div className="flex gap-2.5">
+                                                    {Object.entries(typeCounts).map(([type, count]) => {
+                                                        const style = NODE_STYLES[type] || DEFAULT_NODE_STYLE;
+                                                        return (
+                                                            <div key={type} className="flex items-center gap-1" title={style.label}>
+                                                                <i className={`${style.icon} text-[10px]`} style={{color: style.border}}></i>
+                                                                <span className="font-mono">{count}</span>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                                <div className="h-4 w-px bg-slate-300 hidden sm:block"></div>
+                                                <div className="flex items-center gap-3 text-xs">
+                                                    {totalSubtasks > 0 && <span title="子任務"><i className="fas fa-tasks text-slate-400"></i> {totalSubtasks}</span>}
+                                                    {dayMemos > 0 && <span title="備忘錄"><i className="fas fa-thumbtack text-amber-500"></i> {dayMemos}</span>}
+                                                </div>
+                                            </div>
+                                            
+                                            {Object.keys(currencyTotals).length > 0 && (
+                                                <div className="flex flex-wrap justify-end gap-2 shrink-0">
+                                                    {Object.entries(currencyTotals).map(([cur, amount]) => (
+                                                        <div key={cur} className="bg-white border rounded px-2.5 py-1 text-slate-700 font-bold flex items-center gap-1.5 shadow-sm">
+                                                            <span className="text-xs text-slate-400">{cur}</span>
+                                                            <span className="text-blue-600 tracking-tight">{amount.toLocaleString()}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
+
+                                {/* C4: 旅行日誌 */}
+                                <div className="mt-6 border border-dashed border-amber-300 rounded-lg bg-amber-50/50 overflow-hidden">
+                                    <div className="flex items-center gap-2 px-4 py-2 bg-amber-100/60 border-b border-dashed border-amber-200">
+                                        <i className="fas fa-book-open text-amber-600 text-sm"></i>
+                                        <span className="text-sm font-semibold text-amber-800">旅行日誌</span>
+                                        <span className="text-[10px] text-amber-500">記錄今天的故事與感想...</span>
+                                    </div>
+                                    <textarea
+                                        className="w-full px-4 py-3 bg-transparent text-sm text-slate-700 placeholder-amber-300/80 resize-y focus:outline-none min-h-[80px]"
+                                        value={activeDay.journal || ''}
+                                        onChange={(e) => updatePlans(p => ({ ...p, days: p.days.map(d => d.id === activeDay.id ? { ...d, journal: e.target.value } : d) }))}
+                                        placeholder="今天到了...看到了...吃了...感受悟到..."
+                                    />
+                                </div>
+
                             </div>
                         )}
 
                         {/* 無選中天數的提示 */}
-                        {!activeDay && activePlan && activeDayId !== 'checklist' && (
+                        {!activeDay && activePlan && activeDayId !== 'checklist' && activeDayId !== 'split' && activeDayId !== 'budget' && activeDayId !== 'gantt' && (
                             <div className="text-center py-20 text-slate-400">
                                 <i className="far fa-calendar-plus text-4xl mb-4 block"></i>
                                 <p className="text-lg font-medium mb-2">尚無行程天數</p>
@@ -2145,24 +2954,40 @@ ${pages.join('\n')}
                                                     <div className="space-y-2.5">
                                                         {category.items.map((item) => (
                                                             <div key={item.id} className="flex items-start gap-3 group/item">
-                                                                <input 
-                                                                    type="checkbox" 
-                                                                    className="mt-1 w-4 h-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
-                                                                    checked={item.isChecked}
-                                                                    onChange={(e) => updateChecklistItem(category.id, item.id, { isChecked: e.target.checked })}
-                                                                />
+                                                                {item.isNote ? (
+                                                                    <div className="mt-1 flex items-center justify-center w-4 h-4 shrink-0 text-amber-500">
+                                                                        <i className="fas fa-thumbtack text-[10px] transform -rotate-45"></i>
+                                                                    </div>
+                                                                ) : (
+                                                                    <input 
+                                                                        type="checkbox" 
+                                                                        className="mt-1 w-4 h-4 shrink-0 rounded border-slate-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
+                                                                        checked={item.isChecked}
+                                                                        onChange={(e) => updateChecklistItem(category.id, item.id, { isChecked: e.target.checked })}
+                                                                    />
+                                                                )}
                                                                 <AutoResizeTextarea
-                                                                    className={`flex-1 bg-transparent border-none focus:outline-none focus:bg-white px-1 py-0.5 rounded text-sm transition-colors ${item.isChecked ? 'text-slate-400 line-through' : 'text-slate-700'}`}
+                                                                    className={`flex-1 bg-transparent border-none focus:outline-none focus:bg-white px-1 py-0.5 rounded text-sm transition-colors ${item.isNote ? 'text-slate-800 font-semibold bg-amber-50/50' : item.isChecked ? 'text-slate-400 line-through' : 'text-slate-700'}`}
                                                                     value={item.text}
                                                                     onChange={(e) => updateChecklistItem(category.id, item.id, { text: e.target.value })}
-                                                                    placeholder="輸入準備事項..."
+                                                                    placeholder={item.isNote ? "純文字備註/提醒..." : "輸入準備事項..."}
                                                                 />
-                                                                <button 
-                                                                    onClick={() => deleteChecklistItem(category.id, item.id)} 
-                                                                    className="text-slate-300 hover:text-red-500 opacity-0 group-hover/item:opacity-100 transition-opacity pt-0.5 shrink-0"
-                                                                >
-                                                                    <i className="fas fa-times"></i>
-                                                                </button>
+                                                                <div className="flex items-center opacity-0 group-hover/item:opacity-100 transition-opacity pt-0.5 shrink-0 pl-2">
+                                                                    <button 
+                                                                        onClick={() => updateChecklistItem(category.id, item.id, { isNote: !item.isNote })} 
+                                                                        className={`mr-3 text-xs ${item.isNote ? 'text-amber-600 hover:text-amber-800' : 'text-slate-400 hover:text-amber-600'}`}
+                                                                        title={item.isNote ? "切換為待辦狀態" : "切換為純文字備註"}
+                                                                    >
+                                                                        <i className={`fas ${item.isNote ? 'fa-check-square' : 'fa-sticky-note'}`}></i>
+                                                                    </button>
+                                                                    <button 
+                                                                        onClick={() => deleteChecklistItem(category.id, item.id)} 
+                                                                        className="text-slate-300 hover:text-red-500"
+                                                                        title="刪除"
+                                                                    >
+                                                                        <i className="fas fa-times"></i>
+                                                                    </button>
+                                                                </div>
                                                             </div>
                                                         ))}
                                                         
@@ -2191,6 +3016,381 @@ ${pages.join('\n')}
                             </div>
                         </div>
                     )}
+
+                    {/* --- C1: 分帳結算視圖 --- */}
+                    {activePlan && activeDayId === 'split' && (() => {
+                        const companions = activePlan.companions || [];
+                        const allNodes = activePlan.days.flatMap(d => d.nodes.filter(n => n.cost && parseFloat(n.cost) > 0));
+                        // 計算每人付款與分攝
+                        const summary = companions.map(comp => {
+                            const paid = allNodes.filter(n => n.paidBy === comp.id).reduce((s, n) => s + parseFloat(n.cost || 0), 0);
+                            const shouldPay = allNodes.reduce((s, n) => {
+                                const splitList = (n.splitAmong || []).length > 0 ? n.splitAmong : companions.map(c => c.id);
+                                return s + (splitList.includes(comp.id) ? parseFloat(n.cost || 0) / splitList.length : 0);
+                            }, 0);
+                            return { ...comp, paid, shouldPay, diff: paid - shouldPay };
+                        });
+                        return (
+                        <div className="max-w-3xl mx-auto mt-6 px-4">
+                            <div className="bg-white rounded-2xl shadow-lg border border-slate-100 overflow-hidden">
+                                {/* Header */}
+                                <div className="bg-gradient-to-r from-emerald-500 to-teal-500 text-white px-6 py-4">
+                                    <h2 className="text-xl font-bold flex items-center gap-2">
+                                        <i className="fas fa-calculator"></i> 旅伴分帳
+                                    </h2>
+                                    <p className="text-emerald-100 text-sm mt-1">自動計算每人應付/應收金額</p>
+                                </div>
+                                <div className="p-6">
+                                    {/* 旅伴管理 */}
+                                    <div className="mb-6">
+                                        <h3 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-1.5"><i className="fas fa-users text-emerald-500"></i> 旅伴名單</h3>
+                                        <div className="flex flex-wrap gap-2 mb-3">
+                                            {companions.map(comp => (
+                                                <div key={comp.id} className="flex items-center gap-1.5 bg-slate-50 border rounded-full px-3 py-1 group/comp">
+                                                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: comp.color }}></div>
+                                                    <input
+                                                        className="text-sm bg-transparent border-none focus:outline-none w-20"
+                                                        value={comp.name}
+                                                        onChange={(e) => renameCompanion(comp.id, e.target.value)}
+                                                    />
+                                                    <button onClick={() => deleteCompanion(comp.id)} className="text-slate-300 hover:text-red-500 opacity-0 group-hover/comp:opacity-100 transition-opacity text-xs">
+                                                        <i className="fas fa-times"></i>
+                                                    </button>
+                                                </div>
+                                            ))}
+                                            <button
+                                                onClick={() => { const n = prompt('輸入旅伴名稱'); if (n) addCompanion(n); }}
+                                                className="flex items-center gap-1 text-emerald-600 hover:text-emerald-700 text-sm font-medium border border-dashed border-emerald-300 rounded-full px-3 py-1 hover:bg-emerald-50 transition-colors"
+                                            >
+                                                <i className="fas fa-plus-circle"></i> 新增旅伴
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {companions.length === 0 ? (
+                                        <div className="text-center py-12 text-slate-400">
+                                            <i className="fas fa-user-friends text-4xl mb-3 block"></i>
+                                            <p className="font-medium">尚未新增旅伴</p>
+                                            <p className="text-sm mt-1">請先新增旅伴，再到各節點指定付款人</p>
+                                        </div>
+                                    ) : (
+                                    <>
+                                    {/* 結算總覽 */}
+                                    <div className="mb-6">
+                                        <h3 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-1.5"><i className="fas fa-chart-pie text-emerald-500"></i> 結算總覽</h3>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                            {summary.map(s => (
+                                                <div key={s.id} className="bg-slate-50 rounded-lg p-3 border">
+                                                    <div className="flex items-center gap-2 mb-2">
+                                                        <div className="w-4 h-4 rounded-full" style={{ backgroundColor: s.color }}></div>
+                                                        <span className="font-semibold text-sm">{s.name}</span>
+                                                    </div>
+                                                    <div className="space-y-1 text-xs">
+                                                        <div className="flex justify-between"><span className="text-slate-500">已付款</span><span className="font-bold text-blue-600">{s.paid.toLocaleString()}</span></div>
+                                                        <div className="flex justify-between"><span className="text-slate-500">應分攝</span><span className="font-bold">{s.shouldPay.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span></div>
+                                                        <div className="border-t pt-1 mt-1 flex justify-between">
+                                                            <span className="text-slate-500">{s.diff >= 0 ? '應收' : '應付'}</span>
+                                                            <span className={`font-bold ${s.diff >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{Math.abs(s.diff).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* 明細表 */}
+                                    <div>
+                                        <h3 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-1.5"><i className="fas fa-list-alt text-emerald-500"></i> 花費明細</h3>
+                                        {allNodes.length === 0 ? (
+                                            <p className="text-center text-slate-400 text-sm py-6">尚無已設定花費的節點</p>
+                                        ) : (
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-sm">
+                                                <thead><tr className="border-b text-left text-slate-500">
+                                                    <th className="pb-2 font-medium">項目</th>
+                                                    <th className="pb-2 font-medium">金額</th>
+                                                    <th className="pb-2 font-medium">付款人</th>
+                                                    <th className="pb-2 font-medium">分攝</th>
+                                                </tr></thead>
+                                                <tbody>
+                                                    {activePlan.days.flatMap(d => d.nodes.filter(n => n.cost && parseFloat(n.cost) > 0).map(n => (
+                                                        <tr key={n.id} className="border-b border-slate-50 hover:bg-slate-50">
+                                                            <td className="py-2 font-medium">{n.title || '未命名'}</td>
+                                                            <td className="py-2 text-blue-600 font-mono">{parseFloat(n.cost).toLocaleString()} {n.currency || ''}</td>
+                                                            <td className="py-2">
+                                                                <select className="text-xs border rounded px-1.5 py-0.5 bg-white" value={n.paidBy || ''} onChange={(e) => updateNodePaidBy(d.id, n.id, e.target.value)}>
+                                                                    <option value="">未指定</option>
+                                                                    {companions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                                                </select>
+                                                            </td>
+                                                            <td className="py-2">
+                                                                <div className="flex gap-1 flex-wrap">
+                                                                    {companions.map(c => {
+                                                                        const isIn = (n.splitAmong || []).length === 0 || (n.splitAmong || []).includes(c.id);
+                                                                        return (
+                                                                            <button key={c.id} onClick={() => toggleNodeSplitAmong(d.id, n.id, c.id)}
+                                                                                className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium transition-colors ${isIn ? 'text-white' : 'text-slate-400 border-slate-200 hover:border-slate-300'}`}
+                                                                                style={isIn ? { backgroundColor: c.color, borderColor: c.color } : {}}
+                                                                            >{c.name}</button>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    )))
+                                                    }
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        )}
+                                    </div>
+                                    </>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                        );
+                    })()}
+
+                    {/* --- B1: 預算儀表板 --- */}
+                    {activePlan && activeDayId === 'budget' && (() => {
+                        const allNodes = activePlan.days.flatMap(d => d.nodes);
+                        const costNodes = allNodes.filter(n => n.cost && parseFloat(n.cost) > 0);
+                        if (costNodes.length === 0) {
+                            return (
+                                <div className="text-center py-20 text-slate-400">
+                                    <i className="fas fa-wallet text-4xl mb-4 block text-slate-300"></i>
+                                    <p className="text-lg font-medium">尚無任何花費紀錄</p>
+                                    <p className="text-sm mt-2">請在節點中填寫預估花費，這裡將自動產生分析圖表</p>
+                                </div>
+                            );
+                        }
+
+                        // 依據類型統計花費
+                        const pieData = costNodes.reduce((acc, n) => {
+                            // 這裡簡化處理：全部轉換為數字相加（實務上需考慮多幣別匯率，這裡暫時忽略多幣別混雜）
+                            const amount = parseFloat(n.cost) || 0;
+                            acc[n.type] = (acc[n.type] || 0) + amount;
+                            return acc;
+                        }, {});
+                        const totalCost = Object.values(pieData).reduce((a, b) => a + b, 0);
+
+                        // 依據天數統計花費
+                        const dailyCosts = activePlan.days.map(d => {
+                            const cost = d.nodes.reduce((sum, n) => sum + (parseFloat(n.cost) || 0), 0);
+                            return { id: d.id, title: d.title, cost };
+                        });
+                        const maxDailyCost = Math.max(...dailyCosts.map(d => d.cost), 1);
+
+                        // Canvas 繪製圓餅圖 Component
+                        const PieChart = ({ data, total }) => {
+                            const canvasRef = useRef(null);
+                            useEffect(() => {
+                                const canvas = canvasRef.current;
+                                if (!canvas) return;
+                                const ctx = canvas.getContext('2d');
+                                const w = canvas.width;
+                                const h = canvas.height;
+                                const cx = w / 2;
+                                const cy = h / 2;
+                                const r = Math.min(w, h) / 2 - 10;
+                                
+                                ctx.clearRect(0, 0, w, h);
+                                let startAngle = -Math.PI / 2;
+                                
+                                Object.entries(data).forEach(([type, value]) => {
+                                    if (value <= 0) return;
+                                    const sliceAngle = (value / total) * 2 * Math.PI;
+                                    const style = NODE_STYLES[type] || DEFAULT_NODE_STYLE;
+                                    
+                                    ctx.beginPath();
+                                    ctx.moveTo(cx, cy);
+                                    ctx.arc(cx, cy, r, startAngle, startAngle + sliceAngle);
+                                    ctx.closePath();
+                                    ctx.fillStyle = style.bg; // 使用較淡的背景色
+                                    ctx.fill();
+                                    ctx.lineWidth = 1.5;
+                                    ctx.strokeStyle = style.border; // 使用較深的邊框色
+                                    ctx.stroke();
+
+                                    startAngle += sliceAngle;
+                                });
+                                
+                                // 畫內圓 (Donut chart 效果)
+                                ctx.beginPath();
+                                ctx.arc(cx, cy, r * 0.5, 0, 2 * Math.PI);
+                                ctx.fillStyle = 'white';
+                                ctx.fill();
+                            }, [data, total]);
+                            
+                            return <canvas ref={canvasRef} width="200" height="200" className="mx-auto block" />;
+                        };
+
+                        return (
+                        <div className="max-w-4xl mx-auto mt-6 px-4 mb-20">
+                            <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+                                <i className="fas fa-chart-pie text-indigo-500"></i> 行程預算分析
+                            </h2>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {/* 左側：花費類別圓餅圖 */}
+                                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                                    <h3 className="text-sm font-bold text-slate-600 mb-4 text-center">花費類別佔比</h3>
+                                    <PieChart data={pieData} total={totalCost} />
+                                    <div className="mt-6 flex flex-wrap justify-center gap-3">
+                                        {Object.entries(pieData).sort((a,b)=>b[1]-a[1]).map(([type, val]) => {
+                                            const style = NODE_STYLES[type] || DEFAULT_NODE_STYLE;
+                                            const pct = Math.round((val / totalCost) * 100);
+                                            return (
+                                                <div key={type} className="flex items-center gap-1.5 text-xs bg-slate-50 border rounded px-2 py-1">
+                                                    <i className={style.icon} style={{color: style.border}}></i>
+                                                    <span className="font-medium">{style.label}</span>
+                                                    <span className="font-bold text-slate-700">{pct}%</span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                                
+                                {/* 右側：每日花費橫條圖 */}
+                                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                                    <h3 className="text-sm font-bold text-slate-600 mb-4">每日花費落點</h3>
+                                    <div className="space-y-4">
+                                        {dailyCosts.map(d => {
+                                            const pct = (d.cost / maxDailyCost) * 100;
+                                            return (
+                                                <div key={d.id} className="relative">
+                                                    <div className="flex justify-between text-xs font-medium text-slate-500 mb-1">
+                                                        <span>{d.title}</span>
+                                                        <span className="text-indigo-600 font-mono font-bold">{d.cost.toLocaleString()}</span>
+                                                    </div>
+                                                    <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                                                        <div 
+                                                            className="h-full bg-gradient-to-r from-indigo-300 to-indigo-500 rounded-full transition-all duration-500"
+                                                            style={{ width: `${pct}%` }}
+                                                        ></div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        );
+                    })()}
+
+                    {/* --- B2: 甘特圖時間軸視圖 --- */}
+                    {activePlan && activeDayId === 'gantt' && (() => {
+                        const START_HOUR = 6;
+                        const END_HOUR = 24;
+                        const TOTAL_HOURS = END_HOUR - START_HOUR;
+                        
+                        // 生成時間刻度
+                        const timeLabels = [];
+                        for (let i = START_HOUR; i <= END_HOUR; i++) {
+                            timeLabels.push(`${i.toString().padStart(2, '0')}:00`);
+                        }
+
+                        // 將時間字串 "HH:MM" 轉為 0-1 的比例
+                        const timeToRatio = (timeStr) => {
+                            if (!timeStr) return null;
+                            const [h, m] = timeStr.split(':').map(Number);
+                            if (isNaN(h) || isNaN(m)) return null;
+                            let hour = h;
+                            // 處理跨夜 (00:00 ~ 05:59 視為 24:00 之後)
+                            if (hour < START_HOUR) hour += 24;
+                            if (hour > END_HOUR && hour < 24 + START_HOUR) return 1; // 超出範圍當作最後
+                            const totalMins = (hour - START_HOUR) * 60 + m;
+                            return Math.max(0, Math.min(1, totalMins / (TOTAL_HOURS * 60)));
+                        };
+
+                        return (
+                        <div className="max-w-6xl mx-auto mt-6 px-4 mb-20 overflow-x-auto">
+                            <div className="bg-white rounded-2xl shadow-lg border border-slate-100 p-6 min-w-[800px]">
+                                <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+                                    <i className="fas fa-stream text-orange-500"></i> 行程甘特圖
+                                </h2>
+
+                                <div className="space-y-6">
+                                    {activePlan.days.map(day => {
+                                        // 分析節點時間
+                                        const timedNodes = [];
+                                        const untimedNodes = [];
+                                        day.nodes.forEach(n => {
+                                            const ratio = timeToRatio(n.time);
+                                            if (ratio !== null) timedNodes.push({ ...n, ratio });
+                                            else untimedNodes.push(n);
+                                        });
+
+                                        return (
+                                            <div key={day.id} className="border border-slate-200 rounded-xl overflow-hidden">
+                                                <div className="bg-slate-50 px-4 py-2 border-b border-slate-200 font-bold text-sm text-slate-700">
+                                                    {day.title} {day.subtitle && <span className="font-normal text-slate-500">{day.subtitle}</span>}
+                                                </div>
+                                                <div className="p-4 relative">
+                                                    {/* 時間刻度背景 */}
+                                                    <div className="flex justify-between text-[10px] text-slate-400 mb-2 px-2 relative z-0">
+                                                        {timeLabels.map((lbl, i) => (
+                                                            <div key={i} className="flex flex-col items-center" style={{ width: i===0||i===timeLabels.length-1?'auto':'0' }}>
+                                                                <span>{lbl}</span>
+                                                                <div className="h-24 w-px bg-slate-100 mt-1 absolute top-4"></div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+
+                                                    {/* 有時間的節點 (放置在時間軸上) */}
+                                                    <div className="relative h-16 mt-2 mb-4 bg-slate-50/50 rounded border border-slate-100 mx-2">
+                                                        {timedNodes.map(n => {
+                                                            const style = NODE_STYLES[n.type] || DEFAULT_NODE_STYLE;
+                                                            return (
+                                                                <div 
+                                                                    key={n.id} 
+                                                                    className="absolute top-2 h-12 rounded shadow-sm border px-2 py-1 overflow-hidden transition-transform hover:scale-105 hover:z-10 bg-white group/gnode cursor-default"
+                                                                    style={{ 
+                                                                        left: `calc(${n.ratio * 100}% - 14px)`,
+                                                                        borderLeftWidth: '4px',
+                                                                        borderLeftColor: style.border,
+                                                                        minWidth: '28px',
+                                                                        maxWidth: '120px'
+                                                                    }}
+                                                                    title={`${n.time} ${n.title || '未命名'}`}
+                                                                >
+                                                                    <div className="flex items-center gap-1 opacity-80 group-hover/gnode:opacity-100">
+                                                                        <i className={`${style.icon} text-[10px]`} style={{color: style.border}}></i>
+                                                                        <span className="text-[10px] font-bold text-blue-600 truncate">{n.time}</span>
+                                                                    </div>
+                                                                    <div className="text-xs font-semibold text-slate-700 truncate">{n.title || '未命名'}</div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                        {timedNodes.length === 0 && <div className="absolute inset-0 flex items-center justify-center text-xs text-slate-400">無安排時間的行程</div>}
+                                                    </div>
+
+                                                    {/* 無時間的節點 */}
+                                                    {untimedNodes.length > 0 && (
+                                                        <div className="mt-4 pt-4 border-t border-dashed border-slate-200 mx-2">
+                                                            <div className="text-xs text-slate-500 mb-2 font-medium">未指定時間</div>
+                                                            <div className="flex flex-wrap gap-2">
+                                                                {untimedNodes.map(n => {
+                                                                    const style = NODE_STYLES[n.type] || DEFAULT_NODE_STYLE;
+                                                                    return (
+                                                                        <div key={n.id} className="text-xs bg-white border border-slate-200 rounded py-1 px-2 flex items-center gap-1 shadow-sm" style={{ borderLeft: `3px solid ${style.border}` }}>
+                                                                            <span className="truncate max-w-[150px]">{n.title || '未命名'}</span>
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+                        );
+                    })()}
 
                     {/* --- PDF 設定 Modal --- */}
                     {showPdfSettings && (
@@ -2268,7 +3468,93 @@ ${pages.join('\n')}
                             </div>
                         </div>
                     )}
+
+                    {/* --- C5: 行程對比 Modal --- */}
+                    {showCompare && (() => {
+                        const allDays = data.plans.flatMap(p => p.days.map(d => ({ ...d, planName: p.name, planId: p.id })));
+                        const dayA = allDays.find(d => d.id === compareDays[0]);
+                        const dayB = allDays.find(d => d.id === compareDays[1]);
+                        const renderDayCol = (day) => {
+                            if (!day) return <div className="flex-1 flex items-center justify-center text-slate-400 py-20"><i className="far fa-hand-pointer mr-2"></i>請選擇天數</div>;
+                            const w = WEATHER_CONDITIONS.find(wc => wc.value === day.weather?.condition);
+                            return (
+                                <div className="flex-1 min-w-0">
+                                    <div className="font-bold text-lg mb-1">{day.title} <span className="text-sm font-normal text-slate-400">{day.subtitle || ''}</span></div>
+                                    {w && <div className="text-sm mb-2">{w.icon} {w.label} {day.weather?.tempHigh && `${day.weather.tempHigh}°`}{day.weather?.tempLow && `/${day.weather.tempLow}°`}</div>}
+                                    <div className="space-y-2">
+                                        {day.nodes.map(n => {
+                                            const ns = NODE_STYLES[n.type] || DEFAULT_NODE_STYLE;
+                                            return (
+                                                <div key={n.id} className="border rounded-lg p-2 text-sm" style={{ borderLeft: `4px solid ${ns.border}`, backgroundColor: ns.bg }}>
+                                                    <div className="flex items-center gap-2">
+                                                        {n.time && <span className="text-xs text-blue-600 font-mono font-bold">{n.time}</span>}
+                                                        <span className="font-semibold">{n.title || '未命名'}</span>
+                                                    </div>
+                                                    {n.tags && <div className="text-xs text-slate-500 mt-0.5"><i className="fas fa-tags mr-1"></i>{n.tags}</div>}
+                                                    {n.cost && <div className="text-xs text-blue-500 mt-0.5">{n.currency || ''} {parseFloat(n.cost).toLocaleString()}</div>}
+                                                </div>
+                                            );
+                                        })}
+                                        {day.nodes.length === 0 && <p className="text-slate-400 text-sm text-center py-4">無行程節點</p>}
+                                    </div>
+                                    {day.journal && <div className="mt-3 bg-amber-50 border border-amber-200 rounded p-2 text-xs text-amber-800"><i className="fas fa-book-open mr-1"></i>{day.journal}</div>}
+                                </div>
+                            );
+                        };
+                        return (
+                        <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center overflow-y-auto p-4" onClick={() => setShowCompare(false)}>
+                            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl mt-8 overflow-hidden" onClick={e => e.stopPropagation()}>
+                                <div className="bg-gradient-to-r from-indigo-500 to-purple-500 text-white px-6 py-4 flex justify-between items-center">
+                                    <h2 className="text-xl font-bold flex items-center gap-2"><i className="fas fa-columns"></i> 行程對比</h2>
+                                    <button onClick={() => setShowCompare(false)} className="text-white/80 hover:text-white text-xl"><i className="fas fa-times"></i></button>
+                                </div>
+                                <div className="p-6">
+                                    <div className="grid grid-cols-2 gap-6 mb-6">
+                                        {[0, 1].map(i => (
+                                            <select key={i} className="border rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-indigo-300" value={compareDays[i] || ''} onChange={e => setCompareDays(prev => { const n = [...prev]; n[i] = e.target.value; return n; })}>
+                                                <option value="">-- 選擇天數 --</option>
+                                                {data.plans.map(p => (
+                                                    <optgroup key={p.id} label={p.name}>
+                                                        {p.days.map(d => <option key={d.id} value={d.id}>{d.title}{d.subtitle ? ` ${d.subtitle}` : ''}</option>)}
+                                                    </optgroup>
+                                                ))}
+                                            </select>
+                                        ))}
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-6">
+                                        {renderDayCol(dayA)}
+                                        {renderDayCol(dayB)}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        );
+                    })()}
                     
+                    {/* --- B4: 地圖總覽 Modal --- */}
+                    <MapModal 
+                        isOpen={showMapModal} 
+                        onClose={() => setShowMapModal(false)} 
+                        activePlan={activePlan} 
+                    />
+
+                    {/* --- B5: 單點地圖選取 Modal --- */}
+                    <LocationPickerModal 
+                        isOpen={!!locationPickerNode}
+                        nodeData={locationPickerNode}
+                        onClose={() => setLocationPickerNode(null)}
+                        onConfirm={(lat, lng) => {
+                            if (lat !== undefined && lng !== undefined) {
+                                updatePlans(p => ({
+                                    ...p, days: p.days.map(d => d.id === locationPickerNode.dayId ? { 
+                                        ...d, nodes: d.nodes.map(n => n.id === locationPickerNode.nodeId ? { ...n, lat: lat.toString(), lng: lng.toString() } : n) 
+                                    } : d)
+                                }));
+                            }
+                            setLocationPickerNode(null);
+                        }}
+                    />
+
                     {/* --- 全域備忘錄黑板 (Corkboard) --- */}
                     {showCorkboard && (
                         <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm overflow-y-auto pb-20">
