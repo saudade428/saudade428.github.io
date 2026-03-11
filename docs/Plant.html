@@ -2398,9 +2398,11 @@
 
             return (
                 <div className={`${embedded ? 'mt-2 mb-2' : 'max-w-4xl mx-auto mt-6 px-4 mb-20 animate-fade-in'}`}>
-                    <h2 className={`${embedded ? 'text-base' : 'text-xl'} font-bold text-slate-800 mb-4 flex items-center gap-2`}>
-                        <i className="fas fa-chart-pie text-indigo-500"></i> 行程預算分析
-                    </h2>
+                    {!embedded && (
+                        <h2 className="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2">
+                            <i className="fas fa-chart-pie text-indigo-500"></i> 行程預算分析
+                        </h2>
+                    )}
                     <div className="mb-4 text-xs text-slate-600 bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2 flex flex-wrap gap-3 items-center">
                         <span>統一幣別: <b>{splitBaseCurrency}</b></span>
                         <span>{includeEstimated ? '已納入預估費用' : '僅統計實際費用'}</span>
