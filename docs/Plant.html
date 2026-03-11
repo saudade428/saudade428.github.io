@@ -1961,13 +1961,21 @@
                         }}
                     >
                         <div
-                            className="absolute right-2 top-2 z-30"
+                            className="absolute top-2 right-2 md:right-auto md:left-full md:ml-2 z-30"
                             onMouseEnter={() => setMemoHoverOpen(true)}
                             onMouseLeave={() => { if (!memoPinned) setMemoHoverOpen(false); }}
                         >
-                            <div className="flex items-start justify-end">
+                            <div className="flex items-start">
+                                <button
+                                    onClick={() => setMemoHoverOpen(v => !v)}
+                                    className={`h-16 w-7 rounded-md border shadow flex flex-col items-center justify-center gap-0.5 transition-colors ${memoExpanded ? 'bg-amber-200 border-amber-300 text-amber-800' : 'bg-amber-100 border-amber-200 text-amber-700 hover:bg-amber-200'}`}
+                                    title="節點便利貼"
+                                >
+                                    <i className="far fa-sticky-note text-[11px]"></i>
+                                    {linkedMemos.length > 0 && <span className="text-[9px] font-bold leading-none">{linkedMemos.length}</span>}
+                                </button>
                                 {memoExpanded && (
-                                    <div className="w-64 bg-amber-50 border border-amber-200 rounded-lg p-2 shadow-xl mr-1">
+                                    <div className="w-64 bg-amber-50 border border-amber-200 rounded-lg p-2 shadow-xl ml-1">
                                         <div className="flex items-center justify-between mb-1">
                                             <div className="text-[10px] font-bold text-amber-700">節點備忘</div>
                                             <div className="flex items-center gap-1">
@@ -2018,14 +2026,6 @@
                                         )}
                                     </div>
                                 )}
-                                <button
-                                    onClick={() => setMemoHoverOpen(v => !v)}
-                                    className={`h-16 w-7 rounded-md border shadow flex flex-col items-center justify-center gap-0.5 transition-colors ${memoExpanded ? 'bg-amber-200 border-amber-300 text-amber-800' : 'bg-amber-100 border-amber-200 text-amber-700 hover:bg-amber-200'}`}
-                                    title="節點便利貼"
-                                >
-                                    <i className="far fa-sticky-note text-[11px]"></i>
-                                    {linkedMemos.length > 0 && <span className="text-[9px] font-bold leading-none">{linkedMemos.length}</span>}
-                                </button>
                             </div>
                         </div>
 
