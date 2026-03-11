@@ -5421,7 +5421,7 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                         })}
                                         placeholder="副標題（例：機場 - 飯店）"
                                     />
-                                    <div className="ml-auto flex items-center gap-1.5 bg-blue-50/80 border border-blue-100 rounded-md px-2 py-1">
+                                    <div className="ml-auto hidden sm:flex items-center gap-1.5 bg-blue-50/80 border border-blue-100 rounded-md px-2 py-1">
                                         <select
                                             className="text-sm bg-transparent border-none outline-none cursor-pointer"
                                             value={activeDay.weather?.condition || ''}
@@ -5481,13 +5481,90 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                 </div>
                                 {/* A1: 收合/展開工具列 & C3 導航按鈕 */}
                                 <div className="flex items-center gap-2 mb-3 flex-wrap">
-                                    <button onClick={collapseAll} className="text-xs text-slate-500 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 px-2.5 py-1 rounded-full font-medium flex items-center gap-1 transition-colors border border-slate-200">
+                                    <div className="w-full sm:hidden flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5">
+                                        <button
+                                            onClick={collapseAll}
+                                            className="h-7 w-7 inline-flex items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                                            title="全部收合"
+                                        >
+                                            <i className="fas fa-compress-alt text-[11px]"></i>
+                                        </button>
+                                        <button
+                                            onClick={expandAll}
+                                            className="h-7 w-7 inline-flex items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                                            title="全部展開"
+                                        >
+                                            <i className="fas fa-expand-alt text-[11px]"></i>
+                                        </button>
+                                        <div className="ml-1 flex items-center gap-1 bg-blue-50 border border-blue-100 rounded-md px-1.5 py-1">
+                                            <select
+                                                className="text-[11px] bg-transparent border-none outline-none cursor-pointer text-blue-700"
+                                                value={activeDay.weather?.condition || ''}
+                                                onChange={(e) => dispatch({
+                                                    type: PLAN_ACTIONS.SET_DATA,
+                                                    payload: {
+                                                        ...data,
+                                                        plans: data.plans.map(p => p.id === activePlan.id ? {
+                                                            ...p,
+                                                            days: p.days.map(d => d.id === activeDay.id ? { ...d, weather: { ...d.weather, condition: e.target.value } } : d)
+                                                        } : p)
+                                                    }
+                                                })}
+                                                title="天氣"
+                                            >
+                                                <option value="">☁️</option>
+                                                {WEATHER_CONDITIONS.map(w => <option key={w.value} value={w.value}>{w.icon}</option>)}
+                                            </select>
+                                            <input
+                                                className="w-8 text-[10px] text-center bg-white border border-blue-200 rounded px-1 py-0.5 focus:outline-none focus:border-blue-400"
+                                                value={activeDay.weather?.tempHigh || ''}
+                                                onChange={(e) => dispatch({
+                                                    type: PLAN_ACTIONS.SET_DATA,
+                                                    payload: {
+                                                        ...data,
+                                                        plans: data.plans.map(p => p.id === activePlan.id ? {
+                                                            ...p,
+                                                            days: p.days.map(d => d.id === activeDay.id ? { ...d, weather: { ...d.weather, tempHigh: e.target.value } } : d)
+                                                        } : p)
+                                                    }
+                                                })}
+                                                placeholder="高"
+                                                title="最高溫"
+                                            />
+                                            <span className="text-slate-300 text-[10px]">/</span>
+                                            <input
+                                                className="w-8 text-[10px] text-center bg-white border border-blue-200 rounded px-1 py-0.5 focus:outline-none focus:border-blue-400"
+                                                value={activeDay.weather?.tempLow || ''}
+                                                onChange={(e) => dispatch({
+                                                    type: PLAN_ACTIONS.SET_DATA,
+                                                    payload: {
+                                                        ...data,
+                                                        plans: data.plans.map(p => p.id === activePlan.id ? {
+                                                            ...p,
+                                                            days: p.days.map(d => d.id === activeDay.id ? { ...d, weather: { ...d.weather, tempLow: e.target.value } } : d)
+                                                        } : p)
+                                                    }
+                                                })}
+                                                placeholder="低"
+                                                title="最低溫"
+                                            />
+                                        </div>
+                                        <button
+                                            onClick={() => openGoogleMapsRoute(activeDay)}
+                                            className="ml-auto h-7 w-7 inline-flex items-center justify-center rounded-md border border-blue-200 bg-blue-50 text-blue-600 hover:text-blue-800 hover:bg-blue-100 transition-colors"
+                                            title="開啟本日導航"
+                                        >
+                                            <i className="fas fa-map-marked-alt text-[11px]"></i>
+                                        </button>
+                                    </div>
+
+                                    <button onClick={collapseAll} className="hidden sm:inline-flex text-xs text-slate-500 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 px-2.5 py-1 rounded-full font-medium items-center gap-1 transition-colors border border-slate-200">
                                         <i className="fas fa-compress-alt text-[10px]"></i> 全部收合
                                     </button>
-                                    <button onClick={expandAll} className="text-xs text-slate-500 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 px-2.5 py-1 rounded-full font-medium flex items-center gap-1 transition-colors border border-slate-200">
+                                    <button onClick={expandAll} className="hidden sm:inline-flex text-xs text-slate-500 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 px-2.5 py-1 rounded-full font-medium items-center gap-1 transition-colors border border-slate-200">
                                         <i className="fas fa-expand-alt text-[10px]"></i> 全部展開
                                     </button>
-                                    <button onClick={() => openGoogleMapsRoute(activeDay)} className="text-xs text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-full font-medium flex items-center gap-1 transition-colors border border-blue-200 ml-auto sm:ml-2 shadow-sm">
+                                    <button onClick={() => openGoogleMapsRoute(activeDay)} className="hidden sm:inline-flex text-xs text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-full font-medium items-center gap-1 transition-colors border border-blue-200 ml-auto sm:ml-2 shadow-sm">
                                         🗺️ 開啟本日導航 <i className="fas fa-external-link-alt text-[10px] ml-0.5"></i>
                                     </button>
                                     <span className="text-[10px] text-slate-400 ml-auto sm:ml-0 hidden sm:inline">│ {activeDay.nodes.length} 個節點</span>
