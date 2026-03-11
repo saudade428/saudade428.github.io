@@ -1809,7 +1809,7 @@
 
         const NodeItem = React.memo(({
             node, dayId, planId, nodeIndex, isDragging, isDragOverTop, isDragOverBottom,
-            activePlanLength, otherDays, currentMemos, collapsedNodes, dispatch,
+            activePlanLength, otherDays, currentMemos, collapsedNodes, dayNodes, dispatch,
             onDragStart, onDragOver, onDragLeave, onDrop, onDragEnd, onAddLocation, onToggleCollapse
         }) => {
             const nodeStyle = NODE_STYLES[node.type] || DEFAULT_NODE_STYLE;
@@ -1885,6 +1885,20 @@
                 });
             };
             const memoExpanded = memoPinned || memoHoverOpen;
+
+            const moveNodeBy = (direction) => {
+                if (!Array.isArray(dayNodes)) return;
+                const fromIndex = dayNodes.findIndex(n => n.id === node.id);
+                const toIndex = fromIndex + direction;
+                if (fromIndex === -1 || toIndex < 0 || toIndex >= dayNodes.length) return;
+                const next = [...dayNodes];
+                const [moved] = next.splice(fromIndex, 1);
+                next.splice(toIndex, 0, moved);
+                dispatch({
+                    type: PLAN_ACTIONS.REORDER_NODES,
+                    payload: { planId, dayId, nodes: next }
+                });
+            };
             
             // 顏色映射函數 - 將 memo color 與視覺style關聯
             const getMemoColorClasses = (colorName) => {
@@ -2178,12 +2192,12 @@
                             <div className="mb-2">
                                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-2">
                                     <div className="w-full">
-                                        <div className="flex items-center gap-2 w-full">
+                                        <div className="flex items-start gap-2 w-full flex-wrap sm:flex-nowrap">
                                         <span className="node-drag-handle p-1 flex items-center justify-center cursor-move" title="拖曳排序">
                                             <i className="fas fa-grip-vertical text-slate-300"></i>
                                         </span>
                                         <select 
-                                            className="text-xs font-bold bg-slate-50 border-none rounded p-1 focus:ring-0 cursor-pointer"
+                                            className="text-xs font-bold bg-slate-50 border-none rounded p-1 focus:ring-0 cursor-pointer shrink-0"
                                             value={node.type}
                                             onChange={(e) => dispatch({ type: PLAN_ACTIONS.UPDATE_NODE_TYPE, payload: { planId, dayId, nodeId: node.id, type: e.target.value } })}
                                         >
@@ -2193,7 +2207,7 @@
                                             <option value="transit">🚃 交通</option>
                                         </select>
                                         
-                                        <div className="flex-1 flex flex-col sm:flex-row items-center gap-2 mx-1">
+                                        <div className="w-full sm:flex-1 flex flex-col sm:flex-row items-center gap-2 sm:mx-1">
                                             <input 
                                                 className="font-bold text-sm text-slate-700 bg-transparent border-b border-transparent focus:border-blue-400 focus:outline-none w-full sm:w-1/2"
                                                 value={node.startPoint || ""}
@@ -2210,6 +2224,20 @@
                                         </div>
 
                                         <div className="mt-2 flex items-center gap-1 flex-wrap sm:justify-end">
+                                            <button
+                                                onClick={() => moveNodeBy(-1)}
+                                                className="sm:hidden p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                                                title="上移"
+                                            >
+                                                <i className="fas fa-arrow-up"></i>
+                                            </button>
+                                            <button
+                                                onClick={() => moveNodeBy(1)}
+                                                className="sm:hidden p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                                                title="下移"
+                                            >
+                                                <i className="fas fa-arrow-down"></i>
+                                            </button>
                                             <button 
                                                 onClick={() => onAddLocation(dayId, node.id, node.lat, node.lng, node.title)}
                                                 className={`p-1 rounded-full transition-colors ${node.lat ? 'text-blue-500 bg-blue-50' : 'text-slate-300 hover:text-blue-500 hover:bg-slate-100'}`}
@@ -2285,6 +2313,20 @@
                                             placeholder="請輸入地點或活動名稱..."
                                         />
                                         <div className="flex items-center gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button
+                                                onClick={() => moveNodeBy(-1)}
+                                                className="sm:hidden p-1.5 rounded-full text-slate-300 hover:text-slate-500 hover:bg-slate-100 transition-colors"
+                                                title="上移"
+                                            >
+                                                <i className="fas fa-arrow-up"></i>
+                                            </button>
+                                            <button
+                                                onClick={() => moveNodeBy(1)}
+                                                className="sm:hidden p-1.5 rounded-full text-slate-300 hover:text-slate-500 hover:bg-slate-100 transition-colors"
+                                                title="下移"
+                                            >
+                                                <i className="fas fa-arrow-down"></i>
+                                            </button>
                                             <button 
                                                 onClick={() => onAddLocation(dayId, node.id, node.lat, node.lng, node.title)}
                                                 className={`p-1.5 rounded-full transition-colors ${node.lat ? 'text-blue-500 bg-blue-50' : 'text-slate-300 hover:text-blue-500 hover:bg-slate-100'}`}
@@ -5631,6 +5673,7 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                             otherDays={activePlan.days.filter(d => d.id !== activeDay.id)}
                                             currentMemos={currentMemos}
                                             collapsedNodes={collapsedNodes}
+                                            dayNodes={activeDay.nodes}
                                             dispatch={dispatch}
                                             onDragStart={handleDragStart}
                                             onDragOver={handleDragOver}
