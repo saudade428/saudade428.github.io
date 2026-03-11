@@ -7082,18 +7082,25 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
 
                                     <div className="p-4 overflow-y-auto" style={{ maxHeight: 'calc(78vh - 56px)' }}>
                                         {(() => {
-                                            const dayNodeExpenseCost = mobileDay.nodes.reduce((sum, n) => {
-                                                const nodeSum = normalizeExpenseItems(n)
-                                                    .filter(it => Number(it.amount || 0) > 0)
-                                                    .reduce((inner, it) => inner + Number(it.amount || 0), 0);
-                                                return sum + nodeSum;
-                                            }, 0);
-                                            return dayNodeExpenseCost > 0 ? (
-                                                <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-100">
-                                                    <div className="text-[11px] font-bold text-amber-900 mb-1">💰 當日開銷</div>
-                                                    <div className="text-sm font-bold text-amber-700">{dayNodeExpenseCost.toFixed(2)}</div>
-                                                </div>
-                                            ) : null;
+                                            try {
+                                                const nodes = Array.isArray(mobileDay.nodes) ? mobileDay.nodes : [];
+                                                const dayNodeExpenseCost = nodes.reduce((sum, n) => {
+                                                    const nodeSum = normalizeExpenseItems(n)
+                                                        .filter(it => Number(it.amount || 0) > 0)
+                                                        .reduce((inner, it) => inner + Number(it.amount || 0), 0);
+                                                    return sum + nodeSum;
+                                                }, 0);
+                                                console.log('Mobile Day Expense:', { dayId: mobileDay.id, cost: dayNodeExpenseCost, nodeCount: nodes.length });
+                                                return dayNodeExpenseCost > 0 ? (
+                                                    <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-100">
+                                                        <div className="text-[11px] font-bold text-amber-900 mb-1">💰 當日開銷</div>
+                                                        <div className="text-sm font-bold text-amber-700">{dayNodeExpenseCost.toFixed(2)}</div>
+                                                    </div>
+                                                ) : null;
+                                            } catch (err) {
+                                                console.error('Mobile day expense calculation error:', err);
+                                                return null;
+                                            }
                                         })()}
 
                                         <div className="mb-4">
