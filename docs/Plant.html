@@ -7105,7 +7105,8 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                                 // Build expense breakdown by node
                                                 const expensesByNode = nodes.reduce((acc, node) => {
                                                     const nodeExpenses = normalizeExpenseItems(node)
-                                                        .filter(it => Number(it.amount || 0) > 0);
+                                                        .filter(it => Number(it.amount || 0) > 0)
+                                                        .filter(it => it.expenseStatus !== 'estimated');
                                                     if (nodeExpenses.length > 0) {
                                                         acc.push({
                                                             nodeId: node.id,
@@ -7159,7 +7160,7 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                                                         {nodeExpense.expenses.map((exp, idx) => (
                                                                             <div key={exp.id || idx} className="text-[10px] text-slate-600 flex justify-between items-start">
                                                                                 <span className="flex-1">
-                                                                                    {exp.category && <span className="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded mr-1">{exp.category}</span>}
+                                                                                    {exp.category && <span className="mr-1">{exp.category}</span>}
                                                                                     {exp.note && <span className="italic">{exp.note}</span>}
                                                                                 </span>
                                                                                 <span className="font-semibold ml-2 shrink-0">{Number(exp.amount).toFixed(2)} {exp.currency || 'TWD'}</span>
