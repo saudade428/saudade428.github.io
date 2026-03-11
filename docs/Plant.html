@@ -3188,8 +3188,23 @@
             const [hoveredDay, setHoveredDay] = useState(null);
             const [tooltipPos, setTooltipPos] = useState({ top: 0, left: 0 });
             const hoverTimeoutRef = useRef(null);
+            const [disableHoverTooltip, setDisableHoverTooltip] = useState(false);
+
+            useEffect(() => {
+                const updateTooltipCapability = () => {
+                    const coarsePointer = typeof window !== 'undefined'
+                        && window.matchMedia
+                        && window.matchMedia('(hover: none), (pointer: coarse)').matches;
+                    setDisableHoverTooltip(Boolean(coarsePointer || window.innerWidth < 640));
+                };
+
+                updateTooltipCapability();
+                window.addEventListener('resize', updateTooltipCapability);
+                return () => window.removeEventListener('resize', updateTooltipCapability);
+            }, []);
 
             const handleTooltipEnter = (day, rect) => {
+                if (disableHoverTooltip) return;
                 if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
                 if (rect) {
                     setTooltipPos({ 
@@ -3201,10 +3216,18 @@
             };
 
             const handleTooltipLeave = () => {
+                if (disableHoverTooltip) {
+                    setHoveredDay(null);
+                    return;
+                }
                 hoverTimeoutRef.current = setTimeout(() => {
                     setHoveredDay(null);
                 }, 300);
             };
+
+            useEffect(() => {
+                setHoveredDay(null);
+            }, [activeDayId]);
 
             useEffect(() => {
                 const updateHeaderOffset = () => {
@@ -5266,8 +5289,8 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                 <div 
                                     key={day.id} 
                                     className="flex flex-col items-center group/daywrapper relative"
-                                    onMouseEnter={(e) => handleTooltipEnter(day, e.currentTarget.getBoundingClientRect())}
-                                    onMouseLeave={handleTooltipLeave}
+                                    onMouseEnter={(e) => !disableHoverTooltip && handleTooltipEnter(day, e.currentTarget.getBoundingClientRect())}
+                                    onMouseLeave={() => !disableHoverTooltip && handleTooltipLeave()}
                                 >
                                     {/* 副標題顯示在分頁上方 */}
                                     <div className="text-[11px] text-slate-400 leading-tight max-w-[120px] min-h-[1.75rem] mb-1 px-1 text-center overflow-hidden text-ellipsis whitespace-nowrap transition-opacity">
@@ -5276,7 +5299,12 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                     
                                     <div className="flex items-center gap-0.5 shrink-0">
                                         <button 
-                                            onClick={() => { setActiveDayId(day.id); setShowUtilityMenu(false); }}
+                                            onClick={() => {
+                                                if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+                                                setHoveredDay(null);
+                                                setActiveDayId(day.id);
+                                                setShowUtilityMenu(false);
+                                            }}
                                             className={`group/day px-2.5 sm:px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all whitespace-nowrap max-w-[150px] sm:max-w-[200px] flex items-center gap-1 ${activeDayId === day.id ? 'bg-slate-800 text-white shadow' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'} ${dragOverDayId === day.id ? 'ring-2 ring-blue-400 ring-offset-1 scale-105' : ''}`}
                                             title={day.subtitle ? `${day.title}: ${day.subtitle}` : day.title}
                                             onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOverDayId(day.id); }}
@@ -6788,7 +6816,7 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                         </div>
                     )}
                     {/* 全域 Fixed Tooltip (解決 Overflow 遮擋問題) */}
-                    {hoveredDay && (
+                    {!disableHoverTooltip && hoveredDay && (
                         <div 
                             className="fixed z-[9999] pt-2 pointer-events-none"
                             style={{ 
