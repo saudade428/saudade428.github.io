@@ -1807,7 +1807,7 @@
         const NodeItem = React.memo(({
             node, dayId, planId, nodeIndex, isDragging, isDragOverTop, isDragOverBottom,
             activePlanLength, otherDays, currentMemos, collapsedNodes, dispatch,
-            onDragStart, onDragOver, onDragLeave, onDrop, onDragEnd, onAddLocation, onToggleCollapse, onOpenNodeMemo
+            onDragStart, onDragOver, onDragLeave, onDrop, onDragEnd, onAddLocation, onToggleCollapse
         }) => {
             const nodeStyle = NODE_STYLES[node.type] || DEFAULT_NODE_STYLE;
             const isCollapsed = collapsedNodes.has(node.id);
@@ -1855,6 +1855,28 @@
                     expense: !areAllDetailSectionsCollapsed,
                     subtask: !areAllDetailSectionsCollapsed,
                     child: !areAllDetailSectionsCollapsed
+                });
+            };
+            const addLinkedMemo = () => {
+                dispatch({
+                    type: PLAN_ACTIONS.ADD_MEMO,
+                    payload: {
+                        planId,
+                        dayId,
+                        memo: {
+                            id: generateId(),
+                            x: 100,
+                            y: 220,
+                            width: 224,
+                            height: null,
+                            title: node.title ? `備忘 - ${node.title}` : '節點備忘',
+                            text: '',
+                            color: 'bg-yellow-200',
+                            image: null,
+                            linkedNodeId: node.id,
+                            isMinimized: false
+                        }
+                    }
                 });
             };
 
@@ -1964,9 +1986,9 @@
                                                 <i className={`fas ${areAllDetailSectionsCollapsed ? 'fa-expand-alt' : 'fa-compress-alt'}`}></i>
                                             </button>
                                             <button
-                                                onClick={() => onOpenNodeMemo(node.id)}
+                                                onClick={addLinkedMemo}
                                                 className="p-1 rounded-full transition-colors text-slate-300 hover:text-amber-600 hover:bg-amber-50 relative"
-                                                title="節點備忘側欄"
+                                                title="新增此節點備忘"
                                             >
                                                 <i className="far fa-sticky-note"></i>
                                                 {linkedMemos.length > 0 && (
@@ -2050,9 +2072,9 @@
                                                 <i className={`fas ${areAllDetailSectionsCollapsed ? 'fa-expand-alt' : 'fa-compress-alt'}`}></i>
                                             </button>
                                             <button
-                                                onClick={() => onOpenNodeMemo(node.id)}
+                                                onClick={addLinkedMemo}
                                                 className="p-1.5 rounded-full transition-colors text-slate-300 hover:text-amber-600 hover:bg-amber-50 relative"
-                                                title="節點備忘側欄"
+                                                title="新增此節點備忘"
                                             >
                                                 <i className="far fa-sticky-note"></i>
                                                 {linkedMemos.length > 0 && (
@@ -2090,6 +2112,54 @@
                         
                         {!isCollapsed && (
                             <div className="space-y-3 mt-3">
+                                <div className="xl:float-right xl:w-[300px] xl:ml-3 mb-2 xl:mb-0 bg-amber-50/80 border border-amber-200 rounded-lg p-2.5">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <div className="text-[10px] font-bold text-amber-700 tracking-wider flex items-center gap-1">
+                                            <i className="far fa-sticky-note"></i> 節點備忘
+                                        </div>
+                                        <button
+                                            onClick={addLinkedMemo}
+                                            className="text-[10px] px-1.5 py-0.5 rounded border border-amber-300 text-amber-700 hover:bg-amber-100 font-semibold"
+                                        >
+                                            + 新增
+                                        </button>
+                                    </div>
+                                    <div className="space-y-2 max-h-[260px] overflow-y-auto pr-0.5">
+                                        {linkedMemos.length === 0 ? (
+                                            <div className="text-[11px] text-amber-600/80">尚無備忘，直接按「新增」即可在此編輯。</div>
+                                        ) : linkedMemos.map(m => (
+                                            <div key={m.id} className="bg-white border border-amber-200 rounded p-2">
+                                                <input
+                                                    className="w-full text-xs font-semibold bg-white border border-amber-100 rounded px-2 py-1 mb-1"
+                                                    value={m.title || ''}
+                                                    onChange={(e) => dispatch({
+                                                        type: PLAN_ACTIONS.UPDATE_MEMO,
+                                                        payload: { planId, dayId, memoId: m.id, updatedMemo: { ...m, title: e.target.value } }
+                                                    })}
+                                                    placeholder="備忘標題"
+                                                />
+                                                <textarea
+                                                    className="w-full text-xs bg-white border border-amber-100 rounded px-2 py-1 min-h-[64px]"
+                                                    value={m.text || ''}
+                                                    onChange={(e) => dispatch({
+                                                        type: PLAN_ACTIONS.UPDATE_MEMO,
+                                                        payload: { planId, dayId, memoId: m.id, updatedMemo: { ...m, text: e.target.value } }
+                                                    })}
+                                                    placeholder="輸入節點備忘..."
+                                                />
+                                                <div className="flex justify-end mt-1">
+                                                    <button
+                                                        onClick={() => dispatch({ type: PLAN_ACTIONS.DELETE_MEMO, payload: { planId, dayId, memoId: m.id } })}
+                                                        className="text-[10px] px-2 py-0.5 rounded border border-rose-200 text-rose-600 hover:bg-rose-50"
+                                                    >
+                                                        刪除
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
                                 {/* 共通細節：標籤、支出、筆記、子任務 */}
                                 <div className="flex flex-wrap gap-2 md:gap-4 items-center">
                                     <input 
@@ -2342,6 +2412,7 @@
                                         ))}
                                     </div>
                                 )}
+                                <div className="clear-both"></div>
                             </div>
                         )}
                     </div>
@@ -2878,9 +2949,6 @@
             const [companionReportExpanded, setCompanionReportExpanded] = useState({});
             const [companionReportDayFilter, setCompanionReportDayFilter] = useState({});
             const [budgetAnalysisExpanded, setBudgetAnalysisExpanded] = useState(false);
-            const [memoSidebarPinned, setMemoSidebarPinned] = useState(false);
-            const [memoSidebarHoverOpen, setMemoSidebarHoverOpen] = useState(false);
-            const [memoSidebarNodeId, setMemoSidebarNodeId] = useState(null);
 
             useEffect(() => {
                 try {
@@ -3243,47 +3311,6 @@
             const currentMemos = activeDay?.memos || [];
             const currentChecklists = activePlan?.checklists || [];
             const memoTargetDayId = activeDay?.id || activePlan?.days?.[0]?.id || null;
-            const memoSidebarOpen = memoSidebarPinned || memoSidebarHoverOpen;
-            const memoSidebarNode = activeDay?.nodes?.find(n => n.id === memoSidebarNodeId) || null;
-            const memoSidebarNodeMemos = memoSidebarNode
-                ? currentMemos.filter(m => m.linkedNodeId === memoSidebarNode.id)
-                : [];
-
-            useEffect(() => {
-                if (!activeDay) {
-                    setMemoSidebarNodeId(null);
-                    return;
-                }
-                const hasCurrent = activeDay.nodes.some(n => n.id === memoSidebarNodeId);
-                if (!hasCurrent) {
-                    const firstWithMemo = activeDay.nodes.find(n => currentMemos.some(m => m.linkedNodeId === n.id));
-                    setMemoSidebarNodeId(firstWithMemo?.id || activeDay.nodes[0]?.id || null);
-                }
-            }, [activeDay, memoSidebarNodeId, currentMemos]);
-
-            const addLinkedMemoFromSidebar = useCallback(() => {
-                if (!activePlan || !activeDay || !memoSidebarNode) return;
-                dispatch({
-                    type: PLAN_ACTIONS.ADD_MEMO,
-                    payload: {
-                        planId: activePlan.id,
-                        dayId: activeDay.id,
-                        memo: {
-                            id: generateId(),
-                            x: 100,
-                            y: 220,
-                            width: 224,
-                            height: null,
-                            title: memoSidebarNode.title ? `備忘 - ${memoSidebarNode.title}` : '節點備忘',
-                            text: '',
-                            color: 'bg-yellow-200',
-                            image: null,
-                            linkedNodeId: memoSidebarNode.id,
-                            isMinimized: false
-                        }
-                    }
-                });
-            }, [activePlan, activeDay, memoSidebarNode, dispatch]);
 
             // 計算核對清單進度 (排除純文字備註)
             const getChecklistProgress = () => {
@@ -5291,10 +5318,6 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                             onDragEnd={handleDragEnd}
                                             onAddLocation={(dayId, nodeId, lat, lng, title) => setLocationPickerNode({ dayId, nodeId, lat, lng, title })}
                                             onToggleCollapse={toggleNodeCollapse}
-                                            onOpenNodeMemo={(nodeId) => {
-                                                setMemoSidebarNodeId(nodeId);
-                                                setMemoSidebarHoverOpen(true);
-                                            }}
                                         />
                                     ))}
                                 </div>
@@ -5419,106 +5442,6 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                         )}
                     </main>
                     {/* --- 結束：時間軸主內容區 --- */}
-
-                    {activeDay && activeDay.nodes.length > 0 && (
-                        <div
-                            className="fixed right-0 top-1/2 -translate-y-1/2 z-[1200]"
-                            onMouseEnter={() => setMemoSidebarHoverOpen(true)}
-                            onMouseLeave={() => { if (!memoSidebarPinned) setMemoSidebarHoverOpen(false); }}
-                        >
-                            <div className={`flex items-start transition-all duration-200 ${memoSidebarOpen ? 'translate-x-0' : 'translate-x-[272px]'}`}>
-                                <button
-                                    className="h-24 w-8 rounded-l-lg bg-amber-500 text-white shadow-lg flex flex-col items-center justify-center gap-1"
-                                    title="節點備忘側欄"
-                                    onClick={() => setMemoSidebarHoverOpen(v => !v)}
-                                >
-                                    <i className="far fa-sticky-note text-sm"></i>
-                                    <span className="text-[10px] font-bold">備忘</span>
-                                </button>
-
-                                <div className="w-[272px] max-h-[70vh] bg-white border border-slate-200 border-r-0 rounded-l-xl shadow-2xl overflow-hidden">
-                                    <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-                                        <div className="text-xs font-bold text-slate-700">節點備忘側欄</div>
-                                        <button
-                                            onClick={() => setMemoSidebarPinned(v => !v)}
-                                            className={`text-xs px-2 py-0.5 rounded border ${memoSidebarPinned ? 'bg-amber-100 border-amber-300 text-amber-700' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-100'}`}
-                                            title={memoSidebarPinned ? '取消釘選' : '釘選側欄'}
-                                        >
-                                            <i className="fas fa-thumbtack"></i>
-                                        </button>
-                                    </div>
-
-                                    <div className="p-2 border-b border-slate-100">
-                                        <div className="text-[10px] text-slate-500 mb-1">選擇節點</div>
-                                        <select
-                                            className="w-full text-xs border border-slate-200 rounded px-2 py-1"
-                                            value={memoSidebarNodeId || ''}
-                                            onChange={(e) => setMemoSidebarNodeId(e.target.value || null)}
-                                        >
-                                            {activeDay.nodes.map(n => {
-                                                const cnt = currentMemos.filter(m => m.linkedNodeId === n.id).length;
-                                                return <option key={n.id} value={n.id}>{n.title || '未命名'}{cnt > 0 ? ` (${cnt})` : ''}</option>;
-                                            })}
-                                        </select>
-                                    </div>
-
-                                    <div className="p-2 border-b border-slate-100 flex items-center justify-between">
-                                        <div className="text-[10px] text-slate-500">關聯備忘 {memoSidebarNodeMemos.length} 筆</div>
-                                        <button
-                                            onClick={addLinkedMemoFromSidebar}
-                                            className="text-[10px] px-2 py-0.5 rounded border border-amber-200 text-amber-700 hover:bg-amber-50 font-semibold"
-                                        >
-                                            + 新增
-                                        </button>
-                                    </div>
-
-                                    <div className="p-2 space-y-2 max-h-[46vh] overflow-y-auto">
-                                        {memoSidebarNodeMemos.length === 0 ? (
-                                            <div className="text-xs text-slate-400">尚無關聯備忘，點「新增」建立。</div>
-                                        ) : memoSidebarNodeMemos.map(m => (
-                                            <div key={m.id} className="border border-slate-200 rounded-lg p-2 bg-slate-50/50">
-                                                <input
-                                                    className="w-full text-xs font-semibold bg-white border border-slate-200 rounded px-2 py-1 mb-1"
-                                                    value={m.title || ''}
-                                                    onChange={(e) => dispatch({
-                                                        type: PLAN_ACTIONS.UPDATE_MEMO,
-                                                        payload: { planId: activePlan.id, dayId: activeDay.id, memoId: m.id, updatedMemo: { ...m, title: e.target.value } }
-                                                    })}
-                                                    placeholder="備忘標題"
-                                                />
-                                                <textarea
-                                                    className="w-full text-xs bg-white border border-slate-200 rounded px-2 py-1 min-h-[70px]"
-                                                    value={m.text || ''}
-                                                    onChange={(e) => dispatch({
-                                                        type: PLAN_ACTIONS.UPDATE_MEMO,
-                                                        payload: { planId: activePlan.id, dayId: activeDay.id, memoId: m.id, updatedMemo: { ...m, text: e.target.value } }
-                                                    })}
-                                                    placeholder="輸入節點備忘..."
-                                                />
-                                                <div className="flex justify-end gap-1 mt-1">
-                                                    <button
-                                                        onClick={() => dispatch({
-                                                            type: PLAN_ACTIONS.UPDATE_MEMO,
-                                                            payload: { planId: activePlan.id, dayId: activeDay.id, memoId: m.id, updatedMemo: { ...m, linkedNodeId: null } }
-                                                        })}
-                                                        className="text-[10px] px-2 py-0.5 rounded border border-slate-200 text-slate-500 hover:bg-slate-100"
-                                                    >
-                                                        解除
-                                                    </button>
-                                                    <button
-                                                        onClick={() => dispatch({ type: PLAN_ACTIONS.DELETE_MEMO, payload: { planId: activePlan.id, dayId: activeDay.id, memoId: m.id } })}
-                                                        className="text-[10px] px-2 py-0.5 rounded border border-rose-200 text-rose-600 hover:bg-rose-50"
-                                                    >
-                                                        刪除
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    )}
 
                     {/* --- 獨立呈現區：行前清單 (Checklist) --- */}
                     {activePlan && activeDayId === 'checklist' && (
