@@ -2855,8 +2855,6 @@
             const [companionReportExpanded, setCompanionReportExpanded] = useState({});
             const [companionReportDayFilter, setCompanionReportDayFilter] = useState({});
             const [budgetAnalysisExpanded, setBudgetAnalysisExpanded] = useState(false);
-            const budgetAnalysisRef = useRef(null);
-            const companionReportRef = useRef(null);
 
             useEffect(() => {
                 try {
@@ -2875,21 +2873,6 @@
                     setActiveDayId('split');
                 }
             }, [activeDayId]);
-
-            useEffect(() => {
-                if (activeDayId !== 'split') return;
-                const onPointerDown = (e) => {
-                    const target = e.target;
-                    if (budgetAnalysisExpanded && budgetAnalysisRef.current && !budgetAnalysisRef.current.contains(target)) {
-                        setBudgetAnalysisExpanded(false);
-                    }
-                    if (Object.values(companionReportExpanded).some(Boolean) && companionReportRef.current && !companionReportRef.current.contains(target)) {
-                        setCompanionReportExpanded({});
-                    }
-                };
-                document.addEventListener('mousedown', onPointerDown);
-                return () => document.removeEventListener('mousedown', onPointerDown);
-            }, [activeDayId, budgetAnalysisExpanded, companionReportExpanded]);
 
             const utilityModes = [
                 { id: 'checklist', label: '行前清單', shortLabel: '清單', icon: 'fa-clipboard-check', activeCls: 'bg-amber-100 text-amber-700 border-amber-200' },
@@ -5733,7 +5716,7 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                         )}
                                     </div>
 
-                                    <div ref={budgetAnalysisRef} className="mb-6 bg-white border border-slate-200 rounded-xl overflow-hidden">
+                                    <div className="mb-6 bg-white border border-slate-200 rounded-xl overflow-hidden">
                                         <button
                                             onClick={() => setBudgetAnalysisExpanded(v => !v)}
                                             className="w-full px-4 py-3 flex items-center justify-between text-left bg-slate-50 hover:bg-slate-100 border-b border-slate-200"
@@ -5756,7 +5739,7 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                         )}
                                     </div>
 
-                                    <div ref={companionReportRef} className="mb-6">
+                                    <div className="mb-6">
                                         <h3 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-1.5"><i className="fas fa-receipt text-cyan-500"></i> 各自開銷報表 ({splitBaseCurrency})</h3>
                                         <div className="space-y-3">
                                             {companionExpenseReports.map(rep => {
