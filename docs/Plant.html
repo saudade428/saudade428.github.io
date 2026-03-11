@@ -306,6 +306,7 @@
                             currency: payload.currency || n.currency || 'TWD',
                             amount: Number(payload.amount || 0),
                             category: payload.category || 'other',
+                            subCategory: (payload.subCategory || '').trim(),
                             note: payload.note || '',
                             paidBy: '',
                             splitAmong: [],
@@ -327,6 +328,8 @@
                             if (it.id !== payload.expenseId) return it;
                             const nextValue = payload.field === 'amount'
                                 ? Math.max(0, Number(payload.value || 0))
+                                : payload.field === 'subCategory'
+                                    ? String(payload.value || '').trim()
                                 : payload.value;
                             let updated = { ...it, [payload.field]: nextValue };
                             if (payload.field === 'category' && rules.autoApplyOnCategoryChange) {
@@ -706,6 +709,15 @@
             ticket: '門票',
             shopping: '購物',
             other: '其他'
+        };
+
+        const EXPENSE_SUBCATEGORY_PRESETS = {
+            food: ['早餐', '午餐', '晚餐', '咖啡', '甜點', '宵夜'],
+            transport: ['火車', '高鐵', '地鐵', '公車', '計程車', '租車', '飛機', '渡輪'],
+            lodging: ['飯店', '民宿', '青年旅館', '溫泉旅館', '住宿稅'],
+            ticket: ['景點門票', '展覽票', '交通票券', '樂園票'],
+            shopping: ['伴手禮', '藥妝', '服飾', '日用品', '紀念品'],
+            other: ['保險', '網路', '手續費', '雜支']
         };
 
         const EXPENSE_STATUS_LABELS = {
@@ -2126,6 +2138,18 @@
                                                             <option key={key} value={key}>{label}</option>
                                                         ))}
                                                     </select>
+                                                    <input
+                                                        className="text-[10px] text-slate-600 bg-white border border-slate-200 rounded py-0.5 px-1.5 w-24"
+                                                        value={item.subCategory || ''}
+                                                        onChange={(e) => dispatch({ type: PLAN_ACTIONS.UPDATE_NODE_EXPENSE_ITEM, payload: { planId, dayId, nodeId: node.id, expenseId: item.id, field: 'subCategory', value: e.target.value } })}
+                                                        placeholder="子類別"
+                                                        list={`subcat-${node.id}-${item.id}`}
+                                                    />
+                                                    <datalist id={`subcat-${node.id}-${item.id}`}>
+                                                        {(EXPENSE_SUBCATEGORY_PRESETS[item.category || 'other'] || []).map((opt) => (
+                                                            <option key={opt} value={opt}></option>
+                                                        ))}
+                                                    </datalist>
                                                     <select
                                                         className="text-[10px] bg-white border border-slate-200 rounded py-0.5 px-1 focus:ring-0"
                                                         value={item.expenseStatus === 'estimated' ? 'estimated' : 'actual'}
@@ -5381,8 +5405,9 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
 
                             if (!keyword) return true;
                             const categoryText = EXPENSE_CATEGORIES[entry.category] || '其他';
+                            const subCategoryText = entry.subCategory || '';
                             const payerName = companions.find(c => c.id === entry.paidBy)?.name || '';
-                            return `${entry.nodeTitle || ''} ${entry.note || ''} ${categoryText} ${payerName}`.toLowerCase().includes(keyword);
+                            return `${entry.nodeTitle || ''} ${entry.note || ''} ${categoryText} ${subCategoryText} ${payerName}`.toLowerCase().includes(keyword);
                         }).map(entry => ({
                             ...entry,
                             amountInBase: convertCurrencyAmount(Number(entry.amount || 0), entry.currency || 'TWD', splitBaseCurrency, exchangeRatesToTwd)
@@ -5431,6 +5456,11 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                 acc[key] = (acc[key] || 0) + Number(it.shareInBase || 0);
                                 return acc;
                             }, {});
+                            const subCategoryTotals = consumedEntries.reduce((acc, it) => {
+                                const key = `${it.category || 'other'}::${it.subCategory || '未分類'}`;
+                                acc[key] = (acc[key] || 0) + Number(it.shareInBase || 0);
+                                return acc;
+                            }, {});
 
                             return {
                                 ...comp,
@@ -5438,7 +5468,8 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                 consumedTotal,
                                 paidEntries,
                                 consumedEntries,
-                                categoryTotals
+                                categoryTotals,
+                                subCategoryTotals
                             };
                         });
 
@@ -5770,6 +5801,25 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                                                             ))}
                                                                         </div>
                                                                     )}
+                                                                    {Object.keys(rep.subCategoryTotals || {}).length > 0 && (
+                                                                        <div className="mt-3">
+                                                                            <div className="text-xs font-bold text-slate-600 mb-1">子類別分布</div>
+                                                                            <div className="space-y-1">
+                                                                                {Object.entries(rep.subCategoryTotals)
+                                                                                    .sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))
+                                                                                    .slice(0, 6)
+                                                                                    .map(([key, amount]) => {
+                                                                                        const [catKey, sub] = key.split('::');
+                                                                                        return (
+                                                                                            <div key={`${rep.id}-${key}`} className="flex justify-between text-[11px]">
+                                                                                                <span className="text-slate-500">{EXPENSE_CATEGORIES[catKey] || '其他'} / {sub || '未分類'}</span>
+                                                                                                <span className="font-semibold text-slate-700">{Number(amount || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                                                                                            </div>
+                                                                                        );
+                                                                                    })}
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
                                                                 </div>
                                                                 <div>
                                                                     <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
@@ -5874,7 +5924,12 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                                 <tbody>
                                                     {filteredEntries.map(entry => (
                                                         <tr key={entry.id} className="border-b border-slate-50 hover:bg-slate-50">
-                                                            <td className="py-2 font-medium">{entry.nodeTitle || '未命名'} <span className="text-[10px] text-slate-400 ml-1">({EXPENSE_CATEGORIES[entry.category] || '其他'})</span></td>
+                                                            <td className="py-2 font-medium">
+                                                                {entry.nodeTitle || '未命名'}
+                                                                <span className="text-[10px] text-slate-400 ml-1">
+                                                                    ({EXPENSE_CATEGORIES[entry.category] || '其他'}{entry.subCategory ? ` / ${entry.subCategory}` : ''})
+                                                                </span>
+                                                            </td>
                                                             <td className="py-2 text-xs text-slate-500">{entry.note || '-'}</td>
                                                             <td className="py-2 text-blue-600 font-mono">
                                                                 <div>{Number(entry.amount || 0).toLocaleString()} {entry.currency || ''}</div>
