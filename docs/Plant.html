@@ -2004,7 +2004,15 @@
                         >
                             <div className="flex items-start">
                                 <button
-                                    onClick={() => setMemoHoverOpen(v => !v)}
+                                    onClick={() => {
+                                        if (memoPinned) {
+                                            setMemoPinned(false);
+                                            setMemoHoverOpen(false);
+                                        } else {
+                                            setMemoPinned(true);
+                                            setMemoHoverOpen(true);
+                                        }
+                                    }}
                                     className={`relative h-16 w-8 rounded-r-lg rounded-l-sm border shadow flex flex-col items-center justify-center gap-0.5 transition-all md:-translate-x-1/2 ${memoExpanded ? 'bg-amber-200 border-amber-300 text-amber-800' : 'bg-amber-100 border-amber-200 text-amber-700 hover:bg-amber-200'}`}
                                     title="節點便利貼"
                                 >
@@ -2015,7 +2023,7 @@
                                 {memoExpanded && (
                                     <div className="w-64 bg-amber-50 border border-amber-200 rounded-lg p-2 shadow-xl ml-1">
                                         <div className="flex items-center justify-between mb-1">
-                                            <div className="text-[10px] font-bold text-amber-700">節點備忘</div>
+                                            <div className="text-[10px] font-bold text-amber-700"><i className="far fa-sticky-note"></i></div>
                                             <div className="flex items-center gap-1">
                                                 <button
                                                     onClick={addAnotherLinkedMemo}
@@ -2158,19 +2166,6 @@
                                             >
                                                 <i className={`fas ${areAllDetailSectionsCollapsed ? 'fa-expand-alt' : 'fa-compress-alt'}`}></i>
                                             </button>
-                                            <button
-                                                onClick={() => {
-                                                    setMemoHoverOpen(true);
-                                                    setMemoPinned(true);
-                                                }}
-                                                className="p-1 rounded-full transition-colors text-slate-300 hover:text-amber-600 hover:bg-amber-50 relative"
-                                                title="開啟節點便利貼"
-                                            >
-                                                <i className="far fa-sticky-note"></i>
-                                                {linkedMemos.length > 0 && (
-                                                    <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-1 bg-amber-500 text-white rounded-full text-[9px] leading-[14px] font-bold text-center">{linkedMemos.length}</span>
-                                                )}
-                                            </button>
                                             <button onClick={() => dispatch({ type: PLAN_ACTIONS.DELETE_NODE, payload: { planId, dayId, nodeId: node.id } })} className="text-slate-300 hover:text-red-500 p-1">
                                                 <i className="fas fa-trash-alt"></i>
                                             </button>
@@ -2246,19 +2241,6 @@
                                                 title={areAllDetailSectionsCollapsed ? '展開細節區塊' : '收合細節區塊'}
                                             >
                                                 <i className={`fas ${areAllDetailSectionsCollapsed ? 'fa-expand-alt' : 'fa-compress-alt'}`}></i>
-                                            </button>
-                                            <button
-                                                onClick={() => {
-                                                    setMemoHoverOpen(true);
-                                                    setMemoPinned(true);
-                                                }}
-                                                className="p-1.5 rounded-full transition-colors text-slate-300 hover:text-amber-600 hover:bg-amber-50 relative"
-                                                title="開啟節點便利貼"
-                                            >
-                                                <i className="far fa-sticky-note"></i>
-                                                {linkedMemos.length > 0 && (
-                                                    <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-1 bg-amber-500 text-white rounded-full text-[9px] leading-[14px] font-bold text-center">{linkedMemos.length}</span>
-                                                )}
                                             </button>
                                             <div className="relative group/more">
                                                 <button className="p-1.5 rounded-full text-slate-300 hover:text-slate-500 hover:bg-slate-100 transition-colors">
