@@ -5019,17 +5019,6 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                         </button>
                     </div>
                     
-                    <button 
-                        onClick={() => {
-                            alert('請在節點卡片右上角點擊「便條」按鈕，使用節點側邊備忘抽屜。');
-                        }}
-                        className="bg-yellow-500 hover:bg-yellow-600 text-slate-900 px-2 sm:px-3 py-1 sm:py-1.5 rounded text-xs sm:text-sm font-semibold shadow flex items-center gap-1 shrink-0"
-                        title="請改用節點便條按鈕"
-                    >
-                        <i className="fas fa-sticky-note"></i>
-                        <span className="hidden sm:inline">節點備忘</span>
-                    </button>
-
                     <button onClick={() => setShowMapModal(true)} className="bg-sky-600 hover:bg-sky-500 text-white px-2 sm:px-3 py-1 sm:py-1.5 rounded text-xs sm:text-sm font-semibold shadow flex items-center gap-1 shrink-0" title="地圖總覽">
                         <i className="fas fa-map-marked-alt"></i>
                         <span className="hidden sm:inline">地圖</span>
