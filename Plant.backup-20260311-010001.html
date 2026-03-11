@@ -3189,6 +3189,7 @@
             const [tooltipPos, setTooltipPos] = useState({ top: 0, left: 0 });
             const hoverTimeoutRef = useRef(null);
             const [disableHoverTooltip, setDisableHoverTooltip] = useState(false);
+            const [mobilePreviewDayId, setMobilePreviewDayId] = useState(null);
 
             useEffect(() => {
                 const updateTooltipCapability = () => {
@@ -3228,6 +3229,10 @@
             useEffect(() => {
                 setHoveredDay(null);
             }, [activeDayId]);
+
+            useEffect(() => {
+                setMobilePreviewDayId(null);
+            }, [activeDayId, activePlanId]);
 
             useEffect(() => {
                 const updateHeaderOffset = () => {
@@ -5302,6 +5307,7 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                             onClick={() => {
                                                 if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
                                                 setHoveredDay(null);
+                                                setMobilePreviewDayId(null);
                                                 setActiveDayId(day.id);
                                                 setShowUtilityMenu(false);
                                             }}
@@ -5338,6 +5344,20 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                                 </div>
                                             )}
                                         </button>
+                                        {disableHoverTooltip && (
+                                            <button
+                                                onClick={() => {
+                                                    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+                                                    setHoveredDay(null);
+                                                    setMobilePreviewDayId(day.id);
+                                                    setShowUtilityMenu(false);
+                                                }}
+                                                className="sm:hidden p-1.5 rounded-full border border-slate-200 bg-white text-slate-500 hover:text-blue-600 hover:border-blue-300 transition-colors"
+                                                title="查看當日摘要"
+                                            >
+                                                <i className="fas fa-circle-info text-[11px]"></i>
+                                            </button>
+                                        )}
                                     </div>
 
                                     </div>
@@ -6882,6 +6902,77 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                             </div>
                         </div>
                     )}
+
+                    {/* 手機 Day 摘要抽屜 */}
+                    {disableHoverTooltip && activePlan && mobilePreviewDayId && (() => {
+                        const mobileDay = activePlan.days.find(d => d.id === mobilePreviewDayId);
+                        if (!mobileDay) return null;
+                        return (
+                            <div className="fixed inset-0 z-[9998] sm:hidden">
+                                <div className="absolute inset-0 bg-black/35" onClick={() => setMobilePreviewDayId(null)}></div>
+                                <div className="absolute left-0 right-0 bottom-0 bg-white rounded-t-2xl border-t border-slate-200 shadow-2xl max-h-[78vh] overflow-hidden">
+                                    <div className="px-4 pt-3 pb-2 border-b border-slate-100 flex items-center justify-between">
+                                        <div>
+                                            <div className="text-sm font-bold text-slate-800">{mobileDay.title}</div>
+                                            <div className="text-[11px] text-slate-500">{mobileDay.subtitle || '當日摘要'}</div>
+                                        </div>
+                                        <button
+                                            onClick={() => setMobilePreviewDayId(null)}
+                                            className="p-2 rounded-full text-slate-500 hover:bg-slate-100"
+                                            title="關閉"
+                                        >
+                                            <i className="fas fa-times"></i>
+                                        </button>
+                                    </div>
+
+                                    <div className="p-4 overflow-y-auto" style={{ maxHeight: 'calc(78vh - 56px)' }}>
+                                        <div className="mb-4">
+                                            <div className="text-[11px] font-bold text-slate-500 mb-2 uppercase tracking-wider">行程預覽</div>
+                                            <div className="space-y-1.5">
+                                                {mobileDay.nodes && mobileDay.nodes.length > 0 ? (
+                                                    mobileDay.nodes.slice(0, 5).map(node => (
+                                                        <div key={node.id} className="text-xs text-slate-700 flex items-start gap-1.5">
+                                                            <span className="text-[9px] mt-1 text-slate-300">●</span>
+                                                            <span className="flex-1">{node.title || (node.type === 'transit' ? `${node.startPoint} -> ${node.endPoint}` : '未命名')}</span>
+                                                        </div>
+                                                    ))
+                                                ) : (
+                                                    <div className="text-xs text-slate-400 italic">尚未新增行程</div>
+                                                )}
+                                                {mobileDay.nodes && mobileDay.nodes.length > 5 && (
+                                                    <div className="text-[11px] text-blue-600 font-medium">...等共 {mobileDay.nodes.length} 個行程</div>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {activePlan.days.length > 1 && (
+                                            <div>
+                                                <div className="text-[11px] font-bold text-slate-500 mb-2 uppercase tracking-wider">整天對調</div>
+                                                <div className="grid grid-cols-3 gap-2">
+                                                    {activePlan.days.filter(d => d.id !== mobileDay.id).map(targetDay => {
+                                                        const targetDayIndex = activePlan.days.findIndex(d => d.id === targetDay.id) + 1;
+                                                        return (
+                                                            <button
+                                                                key={targetDay.id}
+                                                                onClick={() => {
+                                                                    dispatch({ type: PLAN_ACTIONS.SWAP_DAYS, payload: { planId: activePlan.id, dayId1: mobileDay.id, dayId2: targetDay.id } });
+                                                                    setMobilePreviewDayId(null);
+                                                                }}
+                                                                className="text-xs font-bold py-2 rounded-lg bg-slate-50 text-slate-700 hover:bg-blue-600 hover:text-white transition-all border border-slate-200"
+                                                                title={`與 D${targetDayIndex} 對調`}
+                                                            >
+                                                                {`D${targetDayIndex}`}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()}
                 </div>
             );
         };
