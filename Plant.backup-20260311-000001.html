@@ -1983,7 +1983,7 @@
                     onDragEnd={onDragEnd}
                 >
                     {/* 時間軸上的點與時間輸入 */}
-                    <div className="absolute -left-[2rem] sm:-left-[2.5rem] md:-left-[4.5rem] top-3 flex flex-col items-center z-0 w-12 sm:w-16 group/time">
+                    <div className="absolute -left-[2rem] sm:-left-[2.5rem] md:-left-[4.5rem] top-3 hidden sm:flex flex-col items-center z-0 w-12 sm:w-16 group/time">
                         <div 
                             className="relative w-full mb-1 cursor-pointer"
                             onClick={(e) => {
@@ -2010,12 +2010,35 @@
                     
                     {/* 節點卡片 */}
                     <div 
-                        className={`relative overflow-visible ml-1 sm:ml-2 md:ml-4 p-3 md:p-4 rounded-xl border-l-4 shadow-sm transition-all hover:shadow-md bg-white ${isCollapsed ? 'py-2 opacity-80' : ''}`}
+                        className={`relative overflow-visible ml-0 sm:ml-2 md:ml-4 p-3 md:p-4 rounded-xl border-l-4 shadow-sm transition-all hover:shadow-md bg-white ${isCollapsed ? 'py-2 opacity-80' : ''}`}
                         style={{ 
                             borderLeftColor: nodeStyle.border,
                             borderColor: node.type === 'transit' ? nodeStyle.border : '#e2e8f0' 
                         }}
                     >
+                        <div className="sm:hidden mb-2">
+                            <div
+                                className="relative inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600 cursor-pointer"
+                                onClick={(e) => {
+                                    const input = e.currentTarget.querySelector('input');
+                                    if (input && typeof input.showPicker === 'function') {
+                                        input.showPicker();
+                                    } else if (input) {
+                                        input.focus();
+                                    }
+                                }}
+                                title="設定節點時間"
+                            >
+                                <i className="far fa-clock text-[10px]"></i>
+                                <span>{node.time || '設定時間'}</span>
+                                <input
+                                    type="time"
+                                    className="absolute inset-0 w-full h-full opacity-0 pointer-events-none"
+                                    value={node.time || ""}
+                                    onChange={(e) => dispatch({ type: PLAN_ACTIONS.UPDATE_NODE_TIME, payload: { planId, dayId, nodeId: node.id, time: e.target.value } })}
+                                />
+                            </div>
+                        </div>
                         <div
                             className="absolute top-2 right-2 md:right-auto md:left-full md:ml-0 z-30"
                             onMouseEnter={() => setMemoHoverOpen(true)}
@@ -5310,9 +5333,9 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                     )}
 
                         {/* --- 主要內容區：時間軸與節點（只渲染當前選中天數） --- */}
-                        <main className="max-w-5xl mx-auto mt-6 px-2 sm:px-4 pl-11 sm:pl-16 md:pl-24 relative">
+                        <main className="max-w-5xl mx-auto mt-6 px-2 sm:px-4 pl-2 sm:pl-16 md:pl-24 relative">
                             {/* 貫穿全域的時間軸線 */}
-                            <div className="timeline-line"></div>
+                            <div className="timeline-line hidden sm:block"></div>
     
                             {activeDay && (
                                 <div className="mb-12 relative">
@@ -5462,7 +5485,7 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
 
                                 {/* 新增節點按鈕 */}
                                 <div className="mt-4 relative">
-                                    <div className="absolute -left-[1.15rem] sm:-left-[1.65rem] md:-left-[3.65rem] top-2 w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-slate-300 z-10"></div>
+                                    <div className="absolute -left-[1.15rem] sm:-left-[1.65rem] md:-left-[3.65rem] top-2 w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-slate-300 z-10 hidden sm:block"></div>
                                     <button 
                                         onClick={() => dispatch({ 
                                             type: PLAN_ACTIONS.ADD_NODE, 
