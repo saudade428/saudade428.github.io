@@ -2302,7 +2302,7 @@
             );
         });
 
-        const BudgetView = React.memo(({ activePlan, splitBaseCurrency = 'TWD', exchangeRatesToTwd = DEFAULT_EXCHANGE_RATES_TO_TWD, includeEstimated = false }) => {
+        const BudgetView = React.memo(({ activePlan, splitBaseCurrency = 'TWD', exchangeRatesToTwd = DEFAULT_EXCHANGE_RATES_TO_TWD, includeEstimated = false, embedded = false }) => {
             const allNodes = activePlan.days.flatMap(d => d.nodes);
             const costItems = allNodes.flatMap(n =>
                 normalizeExpenseItems(n)
@@ -2317,7 +2317,7 @@
 
             if (costItems.length === 0) {
                 return (
-                    <div className="text-center py-20 text-slate-400">
+                    <div className={`text-center text-slate-400 ${embedded ? 'py-10' : 'py-20'}`}>
                         <i className="fas fa-wallet text-4xl mb-4 block text-slate-300"></i>
                         <p className="text-lg font-medium">尚無任何花費紀錄</p>
                         <p className="text-sm mt-2">請在節點中填寫預估花費，這裡將自動產生分析圖表</p>
@@ -2397,8 +2397,8 @@
             };
 
             return (
-                <div className="max-w-4xl mx-auto mt-6 px-4 mb-20 animate-fade-in">
-                    <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+                <div className={`${embedded ? 'mt-2 mb-2' : 'max-w-4xl mx-auto mt-6 px-4 mb-20 animate-fade-in'}`}>
+                    <h2 className={`${embedded ? 'text-base' : 'text-xl'} font-bold text-slate-800 mb-4 flex items-center gap-2`}>
                         <i className="fas fa-chart-pie text-indigo-500"></i> 行程預算分析
                     </h2>
                     <div className="mb-4 text-xs text-slate-600 bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2 flex flex-wrap gap-3 items-center">
@@ -2407,7 +2407,7 @@
                     </div>
 
                     {/* 支付狀態總覽卡片 */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+                    <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 ${embedded ? 'mb-4' : 'mb-6'}`}>
                         {Object.entries(totalStatsByCurrency).map(([cur, stats]) => (
                             <div key={cur} className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 border-t-4 border-t-emerald-500">
                                 <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">預算概覽 ({cur})</div>
@@ -2430,7 +2430,7 @@
                         ))}
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className={`grid grid-cols-1 md:grid-cols-2 ${embedded ? 'gap-4' : 'gap-6'}`}>
                         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
                             <h3 className="text-sm font-bold text-slate-600 mb-4 text-center">花費類別佔比 ({splitBaseCurrency})</h3>
                             <PieChart data={pieData} total={totalCost} />
@@ -2835,10 +2835,16 @@
                 }
             }, [splitBaseCurrency, exchangeRatesToTwd]);
 
+            useEffect(() => {
+                // 相容舊資料：原本停在 budget 分頁時，自動切到 split（預算已整合進分帳）
+                if (activeDayId === 'budget') {
+                    setActiveDayId('split');
+                }
+            }, [activeDayId]);
+
             const utilityModes = [
                 { id: 'checklist', label: '行前清單', shortLabel: '清單', icon: 'fa-clipboard-check', activeCls: 'bg-amber-100 text-amber-700 border-amber-200' },
                 { id: 'split', label: '分帳', shortLabel: '分帳', icon: 'fa-calculator', activeCls: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
-                { id: 'budget', label: '預算', shortLabel: '預算', icon: 'fa-chart-pie', activeCls: 'bg-indigo-100 text-indigo-700 border-indigo-200' },
                 { id: 'gantt', label: '甘特圖', shortLabel: '甘特', icon: 'fa-stream', activeCls: 'bg-orange-100 text-orange-700 border-orange-200' }
             ];
             const activeUtility = utilityModes.find(m => m.id === activeDayId);
@@ -5671,6 +5677,16 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                         )}
                                     </div>
 
+                                    <div className="mb-6 bg-white border border-slate-200 rounded-xl p-4">
+                                        <BudgetView
+                                            activePlan={activePlan}
+                                            splitBaseCurrency={splitBaseCurrency}
+                                            exchangeRatesToTwd={exchangeRatesToTwd}
+                                            includeEstimated={includeEstimatedInSplit}
+                                            embedded={true}
+                                        />
+                                    </div>
+
                                     <div className="mb-6">
                                         <h3 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-1.5"><i className="fas fa-receipt text-cyan-500"></i> 各自開銷報表 ({splitBaseCurrency})</h3>
                                         <div className="space-y-3">
@@ -5913,16 +5929,6 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                         </div>
                         );
                     })()}
-
-                    {/* --- B1: 預算儀表板 --- */}
-                    {activePlan && activeDayId === 'budget' && (
-                        <BudgetView
-                            activePlan={activePlan}
-                            splitBaseCurrency={splitBaseCurrency}
-                            exchangeRatesToTwd={exchangeRatesToTwd}
-                            includeEstimated={includeEstimatedInSplit}
-                        />
-                    )}
 
                     {/* --- B2: 甘特圖時間軸視圖 --- */}
                     {activePlan && activeDayId === 'gantt' && (
