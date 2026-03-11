@@ -306,7 +306,7 @@
                             currency: payload.currency || n.currency || 'TWD',
                             amount: Number(payload.amount || 0),
                             category: payload.category || 'other',
-                            subCategory: (payload.subCategory || '').trim(),
+                            subCategory: String(payload.subCategory || ''),
                             note: payload.note || '',
                             paidBy: '',
                             splitAmong: [],
@@ -329,7 +329,7 @@
                             const nextValue = payload.field === 'amount'
                                 ? Math.max(0, Number(payload.value || 0))
                                 : payload.field === 'subCategory'
-                                    ? String(payload.value || '').trim()
+                                    ? String(payload.value || '')
                                 : payload.value;
                             let updated = { ...it, [payload.field]: nextValue };
                             if (payload.field === 'category' && rules.autoApplyOnCategoryChange) {
@@ -848,6 +848,7 @@
                     currency: it.currency || node.currency || 'TWD',
                     amount: Number(it.amount || 0),
                     category: it.category || 'other',
+                    subCategory: typeof it.subCategory === 'string' ? it.subCategory : '',
                     note: it.note || '',
                     paidBy: it.paidBy || '',
                     splitAmong: Array.isArray(it.splitAmong) ? it.splitAmong : [],
@@ -864,6 +865,7 @@
                     currency: node?.currency || 'TWD',
                     amount,
                     category: 'other',
+                    subCategory: '',
                     note: node?.note || '',
                     paidBy: node?.paidBy || '',
                     splitAmong: Array.isArray(node?.splitAmong) ? node.splitAmong : [],
@@ -2853,6 +2855,8 @@
             const [companionReportExpanded, setCompanionReportExpanded] = useState({});
             const [companionReportDayFilter, setCompanionReportDayFilter] = useState({});
             const [budgetAnalysisExpanded, setBudgetAnalysisExpanded] = useState(false);
+            const budgetAnalysisRef = useRef(null);
+            const companionReportRef = useRef(null);
 
             useEffect(() => {
                 try {
@@ -2871,6 +2875,21 @@
                     setActiveDayId('split');
                 }
             }, [activeDayId]);
+
+            useEffect(() => {
+                if (activeDayId !== 'split') return;
+                const onPointerDown = (e) => {
+                    const target = e.target;
+                    if (budgetAnalysisExpanded && budgetAnalysisRef.current && !budgetAnalysisRef.current.contains(target)) {
+                        setBudgetAnalysisExpanded(false);
+                    }
+                    if (Object.values(companionReportExpanded).some(Boolean) && companionReportRef.current && !companionReportRef.current.contains(target)) {
+                        setCompanionReportExpanded({});
+                    }
+                };
+                document.addEventListener('mousedown', onPointerDown);
+                return () => document.removeEventListener('mousedown', onPointerDown);
+            }, [activeDayId, budgetAnalysisExpanded, companionReportExpanded]);
 
             const utilityModes = [
                 { id: 'checklist', label: '行前清單', shortLabel: '清單', icon: 'fa-clipboard-check', activeCls: 'bg-amber-100 text-amber-700 border-amber-200' },
@@ -5714,7 +5733,7 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                         )}
                                     </div>
 
-                                    <div className="mb-6 bg-white border border-slate-200 rounded-xl overflow-hidden">
+                                    <div ref={budgetAnalysisRef} className="mb-6 bg-white border border-slate-200 rounded-xl overflow-hidden">
                                         <button
                                             onClick={() => setBudgetAnalysisExpanded(v => !v)}
                                             className="w-full px-4 py-3 flex items-center justify-between text-left bg-slate-50 hover:bg-slate-100 border-b border-slate-200"
@@ -5737,7 +5756,7 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                         )}
                                     </div>
 
-                                    <div className="mb-6">
+                                    <div ref={companionReportRef} className="mb-6">
                                         <h3 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-1.5"><i className="fas fa-receipt text-cyan-500"></i> 各自開銷報表 ({splitBaseCurrency})</h3>
                                         <div className="space-y-3">
                                             {companionExpenseReports.map(rep => {
