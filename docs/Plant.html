@@ -1835,6 +1835,12 @@
             const subtaskSummaryText = hasSubtaskData ? `${subtaskDoneCount}/${subtaskCount} 完成` : '尚未新增';
             const childSummaryText = hasChildData ? `${childCount} 個子方案` : '尚未新增';
             const linkedMemos = (currentMemos || []).filter(m => m.linkedNodeId === node.id);
+            const primaryLinkedMemo = linkedMemos[0] || null;
+
+            const [memoPinned, setMemoPinned] = useState(false);
+            const [memoHoverOpen, setMemoHoverOpen] = useState(false);
+            const [memoDraftTitle, setMemoDraftTitle] = useState('');
+            const [memoDraftText, setMemoDraftText] = useState('');
 
             const [sectionCollapsed, setSectionCollapsed] = useState({ expense: true, subtask: true, child: true });
             useEffect(() => {
@@ -1848,6 +1854,13 @@
                 }));
             }, [hasExpenseData, hasSubtaskData, hasChildData]);
 
+            useEffect(() => {
+                setMemoPinned(false);
+                setMemoHoverOpen(false);
+                setMemoDraftTitle(primaryLinkedMemo?.title || '');
+                setMemoDraftText(primaryLinkedMemo?.text || '');
+            }, [node.id, primaryLinkedMemo?.id]);
+
             const toggleSection = (key) => setSectionCollapsed(prev => ({ ...prev, [key]: !prev[key] }));
             const areAllDetailSectionsCollapsed = sectionCollapsed.expense && sectionCollapsed.subtask && sectionCollapsed.child;
             const toggleAllDetailSections = () => {
@@ -1857,7 +1870,30 @@
                     child: !areAllDetailSectionsCollapsed
                 });
             };
-            const addLinkedMemo = () => {
+            const memoExpanded = memoPinned || memoHoverOpen;
+            const upsertLinkedMemo = (field, value) => {
+                if (primaryLinkedMemo) {
+                    dispatch({
+                        type: PLAN_ACTIONS.UPDATE_MEMO,
+                        payload: {
+                            planId,
+                            dayId,
+                            memoId: primaryLinkedMemo.id,
+                            updatedMemo: {
+                                ...primaryLinkedMemo,
+                                title: field === 'title' ? value : memoDraftTitle,
+                                text: field === 'text' ? value : memoDraftText
+                            }
+                        }
+                    });
+                    return;
+                }
+
+                const nextTitle = field === 'title' ? value : memoDraftTitle;
+                const nextText = field === 'text' ? value : memoDraftText;
+                const hasAnyInput = (nextTitle || '').trim() !== '' || (nextText || '').trim() !== '';
+                if (!hasAnyInput) return;
+
                 dispatch({
                     type: PLAN_ACTIONS.ADD_MEMO,
                     payload: {
@@ -1869,8 +1905,8 @@
                             y: 220,
                             width: 224,
                             height: null,
-                            title: node.title ? `備忘 - ${node.title}` : '節點備忘',
-                            text: '',
+                            title: nextTitle,
+                            text: nextText,
                             color: 'bg-yellow-200',
                             image: null,
                             linkedNodeId: node.id,
@@ -1918,12 +1954,81 @@
                     
                     {/* 節點卡片 */}
                     <div 
-                        className={`ml-2 md:ml-4 p-3 md:p-4 rounded-xl border-l-4 shadow-sm transition-all hover:shadow-md bg-white ${isCollapsed ? 'py-2 opacity-80' : ''}`}
+                        className={`relative overflow-visible ml-2 md:ml-4 p-3 md:p-4 rounded-xl border-l-4 shadow-sm transition-all hover:shadow-md bg-white ${isCollapsed ? 'py-2 opacity-80' : ''}`}
                         style={{ 
                             borderLeftColor: nodeStyle.border,
                             borderColor: node.type === 'transit' ? nodeStyle.border : '#e2e8f0' 
                         }}
                     >
+                        <div
+                            className="absolute right-2 top-2 z-30"
+                            onMouseEnter={() => setMemoHoverOpen(true)}
+                            onMouseLeave={() => { if (!memoPinned) setMemoHoverOpen(false); }}
+                        >
+                            <div className="flex items-start justify-end">
+                                {memoExpanded && (
+                                    <div className="w-64 bg-amber-50 border border-amber-200 rounded-lg p-2 shadow-xl mr-1">
+                                        <div className="flex items-center justify-between mb-1">
+                                            <div className="text-[10px] font-bold text-amber-700">節點備忘</div>
+                                            <div className="flex items-center gap-1">
+                                                <button
+                                                    onClick={() => setMemoPinned(v => !v)}
+                                                    className={`text-[10px] px-1.5 py-0.5 rounded border ${memoPinned ? 'bg-amber-200 border-amber-300 text-amber-800' : 'bg-white border-amber-200 text-amber-700 hover:bg-amber-100'}`}
+                                                    title={memoPinned ? '取消釘選' : '釘選'}
+                                                >
+                                                    <i className="fas fa-thumbtack"></i>
+                                                </button>
+                                                {primaryLinkedMemo && (
+                                                    <button
+                                                        onClick={() => {
+                                                            dispatch({ type: PLAN_ACTIONS.DELETE_MEMO, payload: { planId, dayId, memoId: primaryLinkedMemo.id } });
+                                                            setMemoDraftTitle('');
+                                                            setMemoDraftText('');
+                                                        }}
+                                                        className="text-[10px] px-1.5 py-0.5 rounded border border-rose-200 text-rose-600 hover:bg-rose-50"
+                                                        title="刪除備忘"
+                                                    >
+                                                        <i className="fas fa-trash-alt"></i>
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <input
+                                            className="w-full text-xs bg-white border border-amber-100 rounded px-2 py-1 mb-1"
+                                            value={memoDraftTitle}
+                                            onChange={(e) => {
+                                                const next = e.target.value;
+                                                setMemoDraftTitle(next);
+                                                upsertLinkedMemo('title', next);
+                                            }}
+                                            placeholder="標題（可留白）"
+                                        />
+                                        <textarea
+                                            className="w-full text-xs bg-white border border-amber-100 rounded px-2 py-1 min-h-[78px]"
+                                            value={memoDraftText}
+                                            onChange={(e) => {
+                                                const next = e.target.value;
+                                                setMemoDraftText(next);
+                                                upsertLinkedMemo('text', next);
+                                            }}
+                                            placeholder="滑到此節點即可直接編輯..."
+                                        />
+                                        {!primaryLinkedMemo && (memoDraftTitle.trim() === '' && memoDraftText.trim() === '') && (
+                                            <div className="text-[10px] text-amber-600 mt-1">尚未建立資料，開始輸入後會自動綁定到此節點。</div>
+                                        )}
+                                    </div>
+                                )}
+                                <button
+                                    onClick={() => setMemoHoverOpen(v => !v)}
+                                    className={`h-16 w-7 rounded-md border shadow flex flex-col items-center justify-center gap-0.5 transition-colors ${memoExpanded ? 'bg-amber-200 border-amber-300 text-amber-800' : 'bg-amber-100 border-amber-200 text-amber-700 hover:bg-amber-200'}`}
+                                    title="節點便利貼"
+                                >
+                                    <i className="far fa-sticky-note text-[11px]"></i>
+                                    {linkedMemos.length > 0 && <span className="text-[9px] font-bold leading-none">{linkedMemos.length}</span>}
+                                </button>
+                            </div>
+                        </div>
+
                         {node.type === 'transit' ? (
                             <div className="mb-2">
                                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-2">
@@ -1986,9 +2091,12 @@
                                                 <i className={`fas ${areAllDetailSectionsCollapsed ? 'fa-expand-alt' : 'fa-compress-alt'}`}></i>
                                             </button>
                                             <button
-                                                onClick={addLinkedMemo}
+                                                onClick={() => {
+                                                    setMemoHoverOpen(true);
+                                                    setMemoPinned(true);
+                                                }}
                                                 className="p-1 rounded-full transition-colors text-slate-300 hover:text-amber-600 hover:bg-amber-50 relative"
-                                                title="新增此節點備忘"
+                                                title="開啟節點便利貼"
                                             >
                                                 <i className="far fa-sticky-note"></i>
                                                 {linkedMemos.length > 0 && (
@@ -2072,9 +2180,12 @@
                                                 <i className={`fas ${areAllDetailSectionsCollapsed ? 'fa-expand-alt' : 'fa-compress-alt'}`}></i>
                                             </button>
                                             <button
-                                                onClick={addLinkedMemo}
+                                                onClick={() => {
+                                                    setMemoHoverOpen(true);
+                                                    setMemoPinned(true);
+                                                }}
                                                 className="p-1.5 rounded-full transition-colors text-slate-300 hover:text-amber-600 hover:bg-amber-50 relative"
-                                                title="新增此節點備忘"
+                                                title="開啟節點便利貼"
                                             >
                                                 <i className="far fa-sticky-note"></i>
                                                 {linkedMemos.length > 0 && (
@@ -2112,54 +2223,6 @@
                         
                         {!isCollapsed && (
                             <div className="space-y-3 mt-3">
-                                <div className="xl:float-right xl:w-[300px] xl:ml-3 mb-2 xl:mb-0 bg-amber-50/80 border border-amber-200 rounded-lg p-2.5">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <div className="text-[10px] font-bold text-amber-700 tracking-wider flex items-center gap-1">
-                                            <i className="far fa-sticky-note"></i> 節點備忘
-                                        </div>
-                                        <button
-                                            onClick={addLinkedMemo}
-                                            className="text-[10px] px-1.5 py-0.5 rounded border border-amber-300 text-amber-700 hover:bg-amber-100 font-semibold"
-                                        >
-                                            + 新增
-                                        </button>
-                                    </div>
-                                    <div className="space-y-2 max-h-[260px] overflow-y-auto pr-0.5">
-                                        {linkedMemos.length === 0 ? (
-                                            <div className="text-[11px] text-amber-600/80">尚無備忘，直接按「新增」即可在此編輯。</div>
-                                        ) : linkedMemos.map(m => (
-                                            <div key={m.id} className="bg-white border border-amber-200 rounded p-2">
-                                                <input
-                                                    className="w-full text-xs font-semibold bg-white border border-amber-100 rounded px-2 py-1 mb-1"
-                                                    value={m.title || ''}
-                                                    onChange={(e) => dispatch({
-                                                        type: PLAN_ACTIONS.UPDATE_MEMO,
-                                                        payload: { planId, dayId, memoId: m.id, updatedMemo: { ...m, title: e.target.value } }
-                                                    })}
-                                                    placeholder="備忘標題"
-                                                />
-                                                <textarea
-                                                    className="w-full text-xs bg-white border border-amber-100 rounded px-2 py-1 min-h-[64px]"
-                                                    value={m.text || ''}
-                                                    onChange={(e) => dispatch({
-                                                        type: PLAN_ACTIONS.UPDATE_MEMO,
-                                                        payload: { planId, dayId, memoId: m.id, updatedMemo: { ...m, text: e.target.value } }
-                                                    })}
-                                                    placeholder="輸入節點備忘..."
-                                                />
-                                                <div className="flex justify-end mt-1">
-                                                    <button
-                                                        onClick={() => dispatch({ type: PLAN_ACTIONS.DELETE_MEMO, payload: { planId, dayId, memoId: m.id } })}
-                                                        className="text-[10px] px-2 py-0.5 rounded border border-rose-200 text-rose-600 hover:bg-rose-50"
-                                                    >
-                                                        刪除
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-
                                 {/* 共通細節：標籤、支出、筆記、子任務 */}
                                 <div className="flex flex-wrap gap-2 md:gap-4 items-center">
                                     <input 
@@ -2412,7 +2475,6 @@
                                         ))}
                                     </div>
                                 )}
-                                <div className="clear-both"></div>
                             </div>
                         )}
                     </div>
