@@ -7101,19 +7101,77 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                         {(() => {
                                             try {
                                                 const nodes = Array.isArray(mobileDay.nodes) ? mobileDay.nodes : [];
-                                                const dayNodeExpenseCost = nodes.reduce((sum, n) => {
-                                                    const nodeSum = normalizeExpenseItems(n)
-                                                        .filter(it => Number(it.amount || 0) > 0)
-                                                        .reduce((inner, it) => inner + Number(it.amount || 0), 0);
-                                                    return sum + nodeSum;
-                                                }, 0);
-                                                console.log('Mobile Day Expense:', { dayId: mobileDay.id, cost: dayNodeExpenseCost, nodeCount: nodes.length });
-                                                return dayNodeExpenseCost > 0 ? (
-                                                    <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-100">
-                                                        <div className="text-[11px] font-bold text-amber-900 mb-1">💰 當日開銷</div>
-                                                        <div className="text-sm font-bold text-amber-700">{dayNodeExpenseCost.toFixed(2)}</div>
-                                                    </div>
-                                                ) : null;
+                                                
+                                                // Build expense breakdown by node
+                                                const expensesByNode = nodes.reduce((acc, node) => {
+                                                    const nodeExpenses = normalizeExpenseItems(node)
+                                                        .filter(it => Number(it.amount || 0) > 0);
+                                                    if (nodeExpenses.length > 0) {
+                                                        acc.push({
+                                                            nodeId: node.id,
+                                                            nodeTitle: node.title || (node.type === 'transit' ? `${node.startPoint} → ${node.endPoint}` : '未命名'),
+                                                            nodeType: node.type,
+                                                            expenses: nodeExpenses
+                                                        });
+                                                    }
+                                                    return acc;
+                                                }, []);
+                                                
+                                                // Calculate total by currency
+                                                const totalByCurrency = {};
+                                                const allExpenses = expensesByNode.flatMap(n => n.expenses);
+                                                allExpenses.forEach(exp => {
+                                                    const curr = exp.currency || 'TWD';
+                                                    totalByCurrency[curr] = (totalByCurrency[curr] || 0) + Number(exp.amount || 0);
+                                                });
+                                                
+                                                const hasExpenses = Object.keys(totalByCurrency).length > 0;
+                                                console.log('Mobile Day Expense:', { dayId: mobileDay.id, totalByCurrency, nodeCount: nodes.length, hasExpenses });
+                                                
+                                                if (hasExpenses) {
+                                                    return (
+                                                        <div className="mb-4 space-y-3">
+                                                            {/* 總金額摘要 */}
+                                                            <div className="p-3 rounded-lg bg-amber-50 border border-amber-100">
+                                                                <div className="text-[11px] font-bold text-amber-900 mb-2">💰 當日開銷</div>
+                                                                <div className="space-y-1">
+                                                                    {Object.entries(totalByCurrency).map(([curr, total]) => (
+                                                                        <div key={curr} className="text-sm font-bold text-amber-700">
+                                                                            {total.toFixed(2)} {curr}
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                            
+                                                            {/* 按節點展開詳細支出 */}
+                                                            {expensesByNode.length > 0 && (
+                                                                <div className="text-[11px] font-bold text-slate-500 mb-2 uppercase tracking-wider">支出明細</div>
+                                                            )}
+                                                            {expensesByNode.map(nodeExpense => (
+                                                                <div key={nodeExpense.nodeId} className="p-2.5 bg-slate-50 rounded-lg border border-slate-100">
+                                                                    <div className="text-xs font-semibold text-slate-700 mb-1.5">
+                                                                        {nodeExpense.nodeType === 'transit' ? '🚗' : 
+                                                                         nodeExpense.nodeType === 'restaurant' ? '🍽️' :
+                                                                         nodeExpense.nodeType === 'hotel' ? '🏨' : '📍'}
+                                                                        {' '}{nodeExpense.nodeTitle}
+                                                                    </div>
+                                                                    <div className="space-y-1">
+                                                                        {nodeExpense.expenses.map((exp, idx) => (
+                                                                            <div key={exp.id || idx} className="text-[10px] text-slate-600 flex justify-between items-start">
+                                                                                <span className="flex-1">
+                                                                                    {exp.category && <span className="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded mr-1">{exp.category}</span>}
+                                                                                    {exp.note && <span className="italic">{exp.note}</span>}
+                                                                                </span>
+                                                                                <span className="font-semibold ml-2 shrink-0">{Number(exp.amount).toFixed(2)} {exp.currency || 'TWD'}</span>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    );
+                                                }
+                                                return null;
                                             } catch (err) {
                                                 console.error('Mobile day expense calculation error:', err);
                                                 return null;
