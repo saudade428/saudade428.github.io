@@ -5296,8 +5296,24 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                     className="flex flex-col items-center group/daywrapper relative"
                                 >
                                     {/* 副標題顯示在分頁上方 */}
-                                    <div className="text-[11px] text-slate-400 leading-tight max-w-[120px] min-h-[1.75rem] mb-1 px-1 text-center overflow-hidden text-ellipsis whitespace-nowrap transition-opacity">
-                                        {day.subtitle || '\u00A0'}
+                                    <div className="w-full max-w-[132px] min-h-[1.25rem] mb-1 px-1 flex items-center justify-center gap-1">
+                                        <div className="text-[11px] text-slate-400 leading-tight text-center overflow-hidden text-ellipsis whitespace-nowrap transition-opacity flex-1">
+                                            {day.subtitle || '\u00A0'}
+                                        </div>
+                                        {disableHoverTooltip && (
+                                            <button
+                                                onClick={() => {
+                                                    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+                                                    setHoveredDay(null);
+                                                    setMobilePreviewDayId(day.id);
+                                                    setShowUtilityMenu(false);
+                                                }}
+                                                className="sm:hidden h-4 w-4 inline-flex items-center justify-center rounded text-slate-400 hover:text-blue-600 hover:bg-slate-100 transition-colors"
+                                                title="查看當日摘要"
+                                            >
+                                                <i className="fas fa-circle-info text-[10px]"></i>
+                                            </button>
+                                        )}
                                     </div>
                                     
                                     <div className="flex items-center gap-0.5 shrink-0">
@@ -5344,20 +5360,6 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                                 </div>
                                             )}
                                         </button>
-                                        {disableHoverTooltip && (
-                                            <button
-                                                onClick={() => {
-                                                    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
-                                                    setHoveredDay(null);
-                                                    setMobilePreviewDayId(day.id);
-                                                    setShowUtilityMenu(false);
-                                                }}
-                                                className="sm:hidden p-1.5 rounded-full border border-slate-200 bg-white text-slate-500 hover:text-blue-600 hover:border-blue-300 transition-colors"
-                                                title="查看當日摘要"
-                                            >
-                                                <i className="fas fa-circle-info text-[11px]"></i>
-                                            </button>
-                                        )}
                                     </div>
 
                                     </div>
