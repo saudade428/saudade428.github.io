@@ -2970,6 +2970,133 @@
                 alert(`健康檢查完成：發現 ${issues.length} 項風險\n\n- ${shown.join('\n- ')}${more}`);
             }, [activePlan]);
 
+            const smartArrangeActiveDay = useCallback(() => {
+                if (!activePlan || !activeDay) {
+                    alert('請先切換到某一天再執行智慧重排。');
+                    return;
+                }
+
+                if (!Array.isArray(activeDay.nodes) || activeDay.nodes.length < 2) {
+                    alert('節點少於 2 筆，暫時不需要重排。');
+                    return;
+                }
+
+                const decorated = activeDay.nodes.map((node, index) => ({
+                    node,
+                    index,
+                    timeMin: parseTimeToMinutes(node?.time)
+                }));
+
+                const sorted = [...decorated].sort((a, b) => {
+                    if (a.timeMin !== null && b.timeMin !== null) return a.timeMin - b.timeMin;
+                    if (a.timeMin !== null) return -1;
+                    if (b.timeMin !== null) return 1;
+                    return a.index - b.index;
+                }).map(item => item.node);
+
+                const unchanged = sorted.every((n, idx) => n.id === activeDay.nodes[idx].id);
+                if (unchanged) {
+                    alert('目前順序已接近最佳，不需要調整。');
+                    return;
+                }
+
+                dispatch({
+                    type: PLAN_ACTIONS.REORDER_NODES,
+                    payload: { planId: activePlan.id, dayId: activeDay.id, nodes: sorted }
+                });
+                createSnapshot(`手動快照 智慧重排 ${activePlan.name} ${activeDay.title}`);
+                alert('智慧重排完成，已依時間優先順序調整。');
+            }, [activePlan, activeDay, dispatch, createSnapshot]);
+
+            const renameSnapshotById = useCallback((snapshotId) => {
+                const target = snapshots.find(s => s.id === snapshotId);
+                if (!target) return;
+                const nextLabel = window.prompt('請輸入新的快照名稱：', target.label || '手動快照');
+                if (nextLabel === null) return;
+                setSnapshots(prev => prev.map(s => s.id === snapshotId ? { ...s, label: nextLabel.trim() || s.label } : s));
+            }, [snapshots]);
+
+            const deleteSnapshotById = useCallback((snapshotId) => {
+                if (!window.confirm('確定要刪除此快照嗎？')) return;
+                setSnapshots(prev => prev.filter(s => s.id !== snapshotId));
+            }, []);
+
+            const [showSnapshotManager, setShowSnapshotManager] = useState(false);
+            const [showCollabModal, setShowCollabModal] = useState(false);
+            const [collabAuthor, setCollabAuthor] = useState('');
+            const [collabNote, setCollabNote] = useState('');
+
+            const exportCollabProposal = useCallback(() => {
+                if (!activePlan) return;
+                const payload = {
+                    type: 'travel-plan-proposal-v1',
+                    createdAt: Date.now(),
+                    author: collabAuthor.trim() || '匿名旅伴',
+                    note: collabNote.trim(),
+                    sourcePlanId: activePlan.id,
+                    sourcePlanName: activePlan.name,
+                    plan: activePlan
+                };
+                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(payload, null, 2));
+                const a = document.createElement('a');
+                const safeName = (activePlan.name || 'plan').replace(/[\\/:*?"<>|]/g, '_');
+                a.setAttribute('href', dataStr);
+                a.setAttribute('download', `proposal_${safeName}.json`);
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+            }, [activePlan, collabAuthor, collabNote]);
+
+            const importCollabProposal = useCallback(async (evt) => {
+                const file = evt.target.files && evt.target.files[0];
+                if (!file) return;
+                try {
+                    const text = await file.text();
+                    const parsed = JSON.parse(text);
+                    if (parsed?.type !== 'travel-plan-proposal-v1' || !parsed?.plan) {
+                        alert('檔案格式不是協作提案檔。');
+                        return;
+                    }
+
+                    const sourcePlan = parsed.plan;
+                    const days = (sourcePlan.days || []).map((day, idx) => ({
+                        ...day,
+                        id: generateId(),
+                        title: day?.title || `Day ${idx + 1}`,
+                        nodes: (day.nodes || []).map(node => ({
+                            ...node,
+                            id: generateId(),
+                            children: Array.isArray(node.children) ? node.children.map(child => ({ ...child, id: generateId() })) : []
+                        })),
+                        memos: (day.memos || []).map(memo => ({ ...memo, id: generateId() }))
+                    }));
+
+                    const checklists = (sourcePlan.checklists || []).map(cl => ({
+                        ...cl,
+                        id: generateId(),
+                        items: (cl.items || []).map(item => ({ ...item, id: generateId() }))
+                    }));
+
+                    const newPlan = {
+                        ...sourcePlan,
+                        id: generateId(),
+                        name: `${sourcePlan.name || '未命名方案'}（提案）`,
+                        days,
+                        checklists
+                    };
+
+                    dispatch({ type: PLAN_ACTIONS.ADD_PLAN, payload: { plan: newPlan } });
+                    setActivePlanId(newPlan.id);
+                    setActiveDayId(newPlan.days[0]?.id || 'checklist');
+                    createSnapshot(`手動快照 匯入提案 ${newPlan.name}`);
+                    alert('協作提案已匯入為新方案。');
+                } catch (e) {
+                    alert('提案檔讀取失敗，請確認 JSON 格式正確。');
+                } finally {
+                    evt.target.value = '';
+                }
+            }, [dispatch, createSnapshot]);
+
             // 備忘錄與清單狀態
             const currentMemos = activeDay?.memos || [];
             const currentChecklists = activePlan?.checklists || [];
@@ -4693,6 +4820,18 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                         <i className="fas fa-heartbeat text-rose-300 w-4"></i> 行程健康檢查
                                     </button>
 
+                                    <button onClick={() => { smartArrangeActiveDay(); setShowMoreMenu(false); }} className="px-4 py-2 text-left text-sm text-slate-200 hover:bg-slate-700 flex items-center gap-2">
+                                        <i className="fas fa-route text-cyan-300 w-4"></i> 智慧重排行程
+                                    </button>
+
+                                    <button onClick={() => { setShowSnapshotManager(true); setShowMoreMenu(false); }} className="px-4 py-2 text-left text-sm text-slate-200 hover:bg-slate-700 flex items-center gap-2">
+                                        <i className="fas fa-layer-group text-violet-300 w-4"></i> 快照管理中心
+                                    </button>
+
+                                    <button onClick={() => { setShowCollabModal(true); setShowMoreMenu(false); }} className="px-4 py-2 text-left text-sm text-slate-200 hover:bg-slate-700 flex items-center gap-2">
+                                        <i className="fas fa-user-friends text-emerald-300 w-4"></i> 協作提案中心
+                                    </button>
+
                                     <div className="h-[1px] bg-slate-700 mx-2 my-1"></div>
                                     <div className="px-4 pt-0.5 pb-0.5 text-[10px] text-slate-400 font-bold tracking-wider">比較與分享</div>
 
@@ -5770,6 +5909,90 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                         </div>
                         );
                     })()}
+
+                    {showSnapshotManager && (
+                        <div className="fixed inset-0 bg-black/55 z-[1460] flex items-center justify-center p-4" onClick={() => setShowSnapshotManager(false)}>
+                            <div className="bg-white w-full max-w-3xl rounded-2xl shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                                <div className="bg-gradient-to-r from-slate-800 to-slate-700 text-white px-5 py-4 flex items-center justify-between">
+                                    <h3 className="text-lg font-bold flex items-center gap-2"><i className="fas fa-layer-group"></i> 快照管理中心</h3>
+                                    <button onClick={() => setShowSnapshotManager(false)} className="text-white/80 hover:text-white"><i className="fas fa-times"></i></button>
+                                </div>
+                                <div className="p-4 border-b border-slate-200 flex flex-wrap gap-2 items-center justify-between">
+                                    <div className="text-xs text-slate-500">共 {snapshots.length} 筆，最多保留 {MAX_SNAPSHOTS} 筆</div>
+                                    <button
+                                        onClick={() => {
+                                            const name = window.prompt('快照名稱（可留空）：', `手動快照 ${new Date().toLocaleString('zh-TW', { hour12: false })}`);
+                                            if (name !== null) createSnapshot(name.trim() || '手動快照');
+                                        }}
+                                        className="px-3 py-1.5 rounded-lg bg-slate-800 text-white text-sm font-semibold hover:bg-slate-700"
+                                    >
+                                        <i className="fas fa-plus mr-1"></i> 建立快照
+                                    </button>
+                                </div>
+                                <div className="max-h-[60vh] overflow-y-auto divide-y divide-slate-100">
+                                    {snapshots.length === 0 ? (
+                                        <div className="p-8 text-center text-slate-400">目前沒有快照</div>
+                                    ) : snapshots.map((snap) => (
+                                        <div key={snap.id} className="p-4 flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
+                                            <div>
+                                                <div className="font-semibold text-slate-800">{snap.label}</div>
+                                                <div className="text-xs text-slate-500">{new Date(snap.createdAt).toLocaleString('zh-TW', { hour12: false })}</div>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button onClick={() => restoreSnapshotById(snap.id)} className="px-2.5 py-1 rounded bg-blue-600 text-white text-xs font-semibold hover:bg-blue-500">還原</button>
+                                                <button onClick={() => renameSnapshotById(snap.id)} className="px-2.5 py-1 rounded bg-slate-200 text-slate-700 text-xs font-semibold hover:bg-slate-300">改名</button>
+                                                <button onClick={() => deleteSnapshotById(snap.id)} className="px-2.5 py-1 rounded bg-rose-100 text-rose-700 text-xs font-semibold hover:bg-rose-200">刪除</button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {showCollabModal && (
+                        <div className="fixed inset-0 bg-black/55 z-[1460] flex items-center justify-center p-4" onClick={() => setShowCollabModal(false)}>
+                            <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                                <div className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white px-5 py-4 flex items-center justify-between">
+                                    <h3 className="text-lg font-bold flex items-center gap-2"><i className="fas fa-user-friends"></i> 協作提案中心</h3>
+                                    <button onClick={() => setShowCollabModal(false)} className="text-white/80 hover:text-white"><i className="fas fa-times"></i></button>
+                                </div>
+                                <div className="p-5 space-y-4">
+                                    <div className="text-sm text-slate-600 bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+                                        目前版本採用「非即時協作」：匯出提案檔給旅伴編輯後，再匯入成新方案比較。
+                                    </div>
+                                    <div>
+                                        <label className="text-sm font-semibold text-slate-700 block mb-1">提案者</label>
+                                        <input
+                                            value={collabAuthor}
+                                            onChange={(e) => setCollabAuthor(e.target.value)}
+                                            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                                            placeholder="例如：小明"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-sm font-semibold text-slate-700 block mb-1">提案說明</label>
+                                        <textarea
+                                            value={collabNote}
+                                            onChange={(e) => setCollabNote(e.target.value)}
+                                            rows={3}
+                                            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                                            placeholder="例如：我把 Day2 午餐改成車站附近、把博物館往前移"
+                                        />
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        <button onClick={exportCollabProposal} className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold">
+                                            <i className="fas fa-file-export mr-1"></i> 匯出提案檔
+                                        </button>
+                                        <label className="px-3 py-2 rounded-lg bg-teal-100 hover:bg-teal-200 text-teal-700 text-sm font-semibold cursor-pointer">
+                                            <i className="fas fa-file-import mr-1"></i> 匯入提案檔
+                                            <input type="file" accept=".json" onChange={importCollabProposal} className="hidden" />
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                     
                     {/* --- B4: 地圖總覽 Modal --- */}
                     <MapModal 
