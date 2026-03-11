@@ -1882,6 +1882,22 @@
                 });
             };
             const memoExpanded = memoPinned || memoHoverOpen;
+            
+            // 顏色映射函數 - 將 memo color 與視覺style關聯
+            const getMemoColorClasses = (colorName) => {
+                const colorMap = {
+                    'bg-yellow-200': { btn: 'bg-yellow-200', btnAlt: 'bg-yellow-100', border: 'border-yellow-300 text-yellow-800', borderAlt: 'border-yellow-200 text-yellow-700', panel: 'bg-yellow-50 border-yellow-200', panelText: 'text-yellow-700', triangle: 'border-t-yellow-200', triangleAlt: 'border-t-yellow-100', inputBorder: '#fee08b' },
+                    'bg-pink-200': { btn: 'bg-pink-200', btnAlt: 'bg-pink-100', border: 'border-pink-300 text-pink-800', borderAlt: 'border-pink-200 text-pink-700', panel: 'bg-pink-50 border-pink-200', panelText: 'text-pink-700', triangle: 'border-t-pink-200', triangleAlt: 'border-t-pink-100', inputBorder: '#fbcfe8' },
+                    'bg-blue-200': { btn: 'bg-blue-200', btnAlt: 'bg-blue-100', border: 'border-blue-300 text-blue-800', borderAlt: 'border-blue-200 text-blue-700', panel: 'bg-blue-50 border-blue-200', panelText: 'text-blue-700', triangle: 'border-t-blue-200', triangleAlt: 'border-t-blue-100', inputBorder: '#bfdbfe' },
+                    'bg-green-200': { btn: 'bg-green-200', btnAlt: 'bg-green-100', border: 'border-green-300 text-green-800', borderAlt: 'border-green-200 text-green-700', panel: 'bg-green-50 border-green-200', panelText: 'text-green-700', triangle: 'border-t-green-200', triangleAlt: 'border-t-green-100', inputBorder: '#bbf7d0' },
+                    'bg-purple-200': { btn: 'bg-purple-200', btnAlt: 'bg-purple-100', border: 'border-purple-300 text-purple-800', borderAlt: 'border-purple-200 text-purple-700', panel: 'bg-purple-50 border-purple-200', panelText: 'text-purple-700', triangle: 'border-t-purple-200', triangleAlt: 'border-t-purple-100', inputBorder: '#e9d5ff' },
+                    'bg-orange-200': { btn: 'bg-orange-200', btnAlt: 'bg-orange-100', border: 'border-orange-300 text-orange-800', borderAlt: 'border-orange-200 text-orange-700', panel: 'bg-orange-50 border-orange-200', panelText: 'text-orange-700', triangle: 'border-t-orange-200', triangleAlt: 'border-t-orange-100', inputBorder: '#fed7aa' }
+                };
+                return colorMap[colorName] || colorMap['bg-yellow-200'];
+            };
+            
+            const activeMemoColor = getMemoColorClasses(activeLinkedMemo?.color || 'bg-yellow-200');
+            
             const upsertLinkedMemo = (field, value) => {
                 if (activeLinkedMemo) {
                     dispatch({
@@ -2013,31 +2029,55 @@
                                             setMemoHoverOpen(true);
                                         }
                                     }}
-                                    className={`relative h-16 w-8 rounded-r-lg rounded-l-sm border shadow flex flex-col items-center justify-center gap-0.5 transition-all md:-translate-x-1/2 ${memoExpanded ? 'bg-amber-200 border-amber-300 text-amber-800' : 'bg-amber-100 border-amber-200 text-amber-700 hover:bg-amber-200'}`}
+                                    className={`relative h-16 w-8 rounded-r-lg rounded-l-sm border shadow flex flex-col items-center justify-center gap-0.5 transition-all md:-translate-x-1/2 ${memoExpanded ? `${activeMemoColor.btn} ${activeMemoColor.border}` : `${activeMemoColor.btnAlt} ${activeMemoColor.borderAlt} hover:${activeMemoColor.btn}`}`}
                                     title="節點便利貼"
                                 >
                                     <i className="far fa-sticky-note text-[11px]"></i>
                                     {linkedMemos.length > 0 && <span className="text-[9px] font-bold leading-none">{linkedMemos.length}</span>}
-                                    <span className={`pointer-events-none absolute -bottom-2 right-0 w-0 h-0 border-r-[16px] border-r-transparent border-l-0 border-t-[8px] ${memoExpanded ? 'border-t-amber-200' : 'border-t-amber-100'}`}></span>
+                                    <span className={`pointer-events-none absolute -bottom-2 right-0 w-0 h-0 border-r-[16px] border-r-transparent border-l-0 border-t-[8px] ${memoExpanded ? activeMemoColor.triangle : activeMemoColor.triangleAlt}`}></span>
                                 </button>
                                 {memoExpanded && (
-                                    <div className="w-64 bg-amber-50 border border-amber-200 rounded-lg p-2 shadow-xl ml-1">
+                                    <div className={`w-64 rounded-lg p-2 shadow-xl ml-1 border ${activeMemoColor.panel}`}>
                                         <div className="flex items-center justify-between mb-1">
-                                            <div className="text-[10px] font-bold text-amber-700"><i className="far fa-sticky-note"></i></div>
+                                            <div className={`text-[10px] font-bold ${activeMemoColor.panelText}`}><i className="far fa-sticky-note"></i></div>
                                             <div className="flex items-center gap-1">
                                                 <button
                                                     onClick={addAnotherLinkedMemo}
-                                                    className="text-[10px] px-1.5 py-0.5 rounded border border-amber-200 bg-white text-amber-700 hover:bg-amber-100"
+                                                    className={`text-[10px] px-1.5 py-0.5 rounded border bg-white hover:${activeMemoColor.btnAlt} transition-colors`}
+                                                    style={{ borderColor: `${activeMemoColor.panelText}` }}
                                                     title="新增書籤"
                                                 >
                                                     <i className="fas fa-plus"></i>
                                                 </button>
                                                 <button
                                                     onClick={() => setMemoPinned(v => !v)}
-                                                    className={`text-[10px] px-1.5 py-0.5 rounded border ${memoPinned ? 'bg-amber-200 border-amber-300 text-amber-800' : 'bg-white border-amber-200 text-amber-700 hover:bg-amber-100'}`}
+                                                    className={`text-[10px] px-1.5 py-0.5 rounded border transition-all ${memoPinned ? `${activeMemoColor.btn} ${activeMemoColor.border}` : `bg-white hover:${activeMemoColor.btnAlt}`}`}
+                                                    style={!memoPinned ? { borderColor: activeMemoColor.panelText.replace('text-', 'border-') } : {}}
                                                     title={memoPinned ? '取消釘選' : '釘選'}
                                                 >
                                                     <i className="fas fa-thumbtack"></i>
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        const colors = ['bg-yellow-200', 'bg-pink-200', 'bg-blue-200', 'bg-green-200', 'bg-purple-200', 'bg-orange-200'];
+                                                        const idx = colors.indexOf(activeLinkedMemo?.color || 'bg-yellow-200');
+                                                        const nextIdx = (idx + 1) % colors.length;
+                                                        if (activeLinkedMemo) {
+                                                            dispatch({
+                                                                type: PLAN_ACTIONS.UPDATE_MEMO,
+                                                                payload: {
+                                                                    planId,
+                                                                    dayId,
+                                                                    memoId: activeLinkedMemo.id,
+                                                                    updatedMemo: { ...activeLinkedMemo, color: colors[nextIdx] }
+                                                                }
+                                                            });
+                                                        }
+                                                    }}
+                                                    className="text-[10px] px-1.5 py-0.5 rounded border border-slate-200 bg-white hover:bg-slate-50 text-slate-600"
+                                                    title="切換顏色"
+                                                >
+                                                    <i className="fas fa-palette"></i>
                                                 </button>
                                                 {activeLinkedMemo && (
                                                     <button
@@ -2060,6 +2100,7 @@
                                             <div className="flex items-center gap-1 mb-1 overflow-x-auto hide-scrollbar">
                                                 {linkedMemos.map((m, idx) => {
                                                     const isActive = m.id === (activeLinkedMemo?.id || '');
+                                                    const memoColorClasses = getMemoColorClasses(m.color || 'bg-yellow-200');
                                                     return (
                                                         <button
                                                             key={m.id}
@@ -2068,7 +2109,7 @@
                                                                 setMemoDraftTitle(m.title || '');
                                                                 setMemoDraftText(m.text || '');
                                                             }}
-                                                            className={`shrink-0 text-[10px] px-2 py-0.5 rounded border ${isActive ? 'bg-amber-200 border-amber-300 text-amber-800' : 'bg-white border-amber-100 text-amber-700 hover:bg-amber-100'}`}
+                                                            className={`shrink-0 text-[10px] px-2 py-0.5 rounded border transition-all ${isActive ? `${memoColorClasses.btn} ${memoColorClasses.border}` : `bg-white hover:${memoColorClasses.btnAlt}`}`}
                                                             title={m.title || `書籤 ${idx + 1}`}
                                                         >
                                                             {m.title?.trim() ? m.title.slice(0, 8) : `書籤${idx + 1}`}
@@ -2078,7 +2119,8 @@
                                             </div>
                                         )}
                                         <input
-                                            className="w-full text-xs bg-white border border-amber-100 rounded px-2 py-1 mb-1"
+                                            className="w-full text-xs bg-white rounded px-2 py-1 mb-1 border"
+                                            style={{ borderColor: activeMemoColor.inputBorder }}
                                             value={memoDraftTitle}
                                             onChange={(e) => {
                                                 const next = e.target.value;
@@ -2088,7 +2130,8 @@
                                             placeholder="標題（可留白）"
                                         />
                                         <textarea
-                                            className="w-full text-xs bg-white border border-amber-100 rounded px-2 py-1 min-h-[78px]"
+                                            className="w-full text-xs bg-white rounded px-2 py-1 min-h-[78px] border"
+                                            style={{ borderColor: activeMemoColor.inputBorder }}
                                             value={memoDraftText}
                                             onChange={(e) => {
                                                 const next = e.target.value;
@@ -2098,7 +2141,7 @@
                                             placeholder="滑到此節點即可直接編輯..."
                                         />
                                         {!activeLinkedMemo && (memoDraftTitle.trim() === '' && memoDraftText.trim() === '') && (
-                                            <div className="text-[10px] text-amber-600 mt-1">尚未建立資料，開始輸入後會自動綁定到此節點。</div>
+                                            <div className={`text-[10px] mt-1 ${activeMemoColor.panelText}`}>尚未建立資料，開始輸入後會自動綁定到此節點。</div>
                                         )}
                                     </div>
                                 )}
