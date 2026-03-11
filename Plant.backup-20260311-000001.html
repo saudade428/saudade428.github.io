@@ -2151,7 +2151,8 @@
                         {node.type === 'transit' ? (
                             <div className="mb-2">
                                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-2">
-                                    <div className="flex items-center gap-2 w-full">
+                                    <div className="w-full">
+                                        <div className="flex items-center gap-2 w-full">
                                         <span className="node-drag-handle p-1 flex items-center justify-center cursor-move" title="拖曳排序">
                                             <i className="fas fa-grip-vertical text-slate-300"></i>
                                         </span>
@@ -2182,7 +2183,7 @@
                                             />
                                         </div>
 
-                                        <div className="flex items-center gap-1">
+                                        <div className="mt-2 flex items-center gap-1 flex-wrap sm:justify-end">
                                             <button 
                                                 onClick={() => onAddLocation(dayId, node.id, node.lat, node.lng, node.title)}
                                                 className={`p-1 rounded-full transition-colors ${node.lat ? 'text-blue-500 bg-blue-50' : 'text-slate-300 hover:text-blue-500 hover:bg-slate-100'}`}
@@ -2213,6 +2214,7 @@
                                                 <i className="fas fa-trash-alt"></i>
                                             </button>
                                         </div>
+                                    </div>
                                     </div>
                                 </div>
                                 <div className="flex flex-wrap gap-2 items-center">
@@ -2528,16 +2530,19 @@
                                     <div className="flex items-center justify-between mb-2">
                                         <button
                                             onClick={() => toggleSection('child')}
-                                            className="flex items-center gap-1.5 min-w-0"
+                                            className="flex items-center gap-1.5 min-w-0 flex-1"
                                         >
-                                            <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                                                <i className="fas fa-layer-group"></i> 備選方案 / 子行程
+                                            <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
+                                                <i className="fas fa-layer-group"></i>
+                                                <span className="hidden sm:inline">備選方案 / 子行程</span>
+                                                <span className="sm:hidden">子行程</span>
                                             </div>
                                             <span className="text-[10px] text-slate-400 truncate max-w-[130px]">{childSummaryText}</span>
                                             <i className={`fas ${sectionCollapsed.child ? 'fa-chevron-down' : 'fa-chevron-up'} text-[10px] text-slate-400`}></i>
                                         </button>
-                                        <button onClick={() => { setSectionCollapsed(prev => ({ ...prev, child: false })); dispatch({ type: PLAN_ACTIONS.ADD_CHILD_NODE, payload: { planId, dayId, nodeId: node.id } }); }} className="text-[10px] text-emerald-600 hover:text-emerald-700 font-bold bg-white px-2 py-0.5 rounded border border-emerald-100 shadow-sm">
-                                            + 新增子方案
+                                        <button onClick={() => { setSectionCollapsed(prev => ({ ...prev, child: false })); dispatch({ type: PLAN_ACTIONS.ADD_CHILD_NODE, payload: { planId, dayId, nodeId: node.id } }); }} className="text-[10px] text-emerald-600 hover:text-emerald-700 font-bold bg-white px-2 py-0.5 rounded border border-emerald-100 shadow-sm whitespace-nowrap ml-2">
+                                            <span className="hidden sm:inline">+ 新增子方案</span>
+                                            <span className="sm:hidden">+ 子方案</span>
                                         </button>
                                     </div>
                                     {!sectionCollapsed.child && <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
@@ -2769,9 +2774,9 @@
             };
 
             return (
-                <div className="max-w-6xl mx-auto mt-6 px-4 mb-20 overflow-x-auto animate-fade-in">
-                    <div className="bg-white rounded-2xl shadow-lg border border-slate-100 p-6 min-w-[800px]">
-                        <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+                <div className="max-w-6xl mx-auto mt-6 px-2 sm:px-4 mb-20 overflow-x-auto animate-fade-in">
+                    <div className="bg-white rounded-2xl shadow-lg border border-slate-100 p-3 sm:p-6 min-w-[620px] sm:min-w-[800px]">
+                        <h2 className="text-lg sm:text-xl font-bold text-slate-800 mb-4 sm:mb-6 flex items-center gap-2">
                             <i className="fas fa-stream text-orange-500"></i> 行程甘特圖
                         </h2>
                         <div className="space-y-6">
@@ -2788,8 +2793,8 @@
                                         <div className="bg-slate-50 px-4 py-2 border-b border-slate-200 font-bold text-sm text-slate-700">
                                             {day.title} {day.subtitle && <span className="font-normal text-slate-500">{day.subtitle}</span>}
                                         </div>
-                                        <div className="p-4 relative">
-                                            <div className="flex justify-between text-[10px] text-slate-400 mb-2 px-2 relative z-0">
+                                        <div className="p-2.5 sm:p-4 relative">
+                                            <div className="hidden sm:flex justify-between text-[10px] text-slate-400 mb-2 px-2 relative z-0">
                                                 {timeLabels.map((lbl, i) => (
                                                     <div key={i} className="flex flex-col items-center" style={{ width: i===0||i===timeLabels.length-1?'auto':'0' }}>
                                                         <span>{lbl}</span>
@@ -2797,19 +2802,24 @@
                                                     </div>
                                                 ))}
                                             </div>
-                                            <div className="relative h-16 mt-2 mb-4 bg-slate-50/50 rounded border border-slate-100 mx-2">
+                                            <div className="flex sm:hidden justify-between text-[9px] text-slate-400 mb-1 px-1">
+                                                {timeLabels.filter((_, idx) => idx % 2 === 0).map((lbl, i) => (
+                                                    <span key={`m-${i}`}>{lbl}</span>
+                                                ))}
+                                            </div>
+                                            <div className="relative h-14 sm:h-16 mt-2 mb-4 bg-slate-50/50 rounded border border-slate-100 mx-1 sm:mx-2">
                                                 {timedNodes.map(n => {
                                                     const style = NODE_STYLES[n.type] || DEFAULT_NODE_STYLE;
                                                     return (
-                                                        <div key={n.id} className="absolute top-2 h-12 rounded shadow-sm border px-2 py-1 overflow-hidden transition-transform hover:scale-105 hover:z-10 bg-white group/gnode cursor-default"
-                                                            style={{ left: `calc(${n.ratio * 100}% - 14px)`, borderLeftWidth: '4px', borderLeftColor: style.border, minWidth: '28px', maxWidth: '120px' }}
+                                                        <div key={n.id} className="absolute top-1.5 sm:top-2 h-11 sm:h-12 rounded shadow-sm border px-1.5 sm:px-2 py-1 overflow-hidden transition-transform hover:scale-105 hover:z-10 bg-white group/gnode cursor-default"
+                                                            style={{ left: `calc(${n.ratio * 100}% - 14px)`, borderLeftWidth: '4px', borderLeftColor: style.border, minWidth: '28px', maxWidth: '100px' }}
                                                             title={`${n.time} ${n.title || '未命名'}`}
                                                         >
                                                             <div className="flex items-center gap-1 opacity-80 group-hover/gnode:opacity-100">
                                                                 <i className={`${style.icon} text-[10px]`} style={{color: style.border}}></i>
                                                                 <span className="text-[10px] font-bold text-blue-600 truncate">{n.time}</span>
                                                             </div>
-                                                            <div className="text-xs font-semibold text-slate-700 truncate">{n.title || '未命名'}</div>
+                                                            <div className="text-[11px] sm:text-xs font-semibold text-slate-700 truncate">{n.title || '未命名'}</div>
                                                         </div>
                                                     );
                                                 })}
