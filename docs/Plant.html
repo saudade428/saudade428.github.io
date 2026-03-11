@@ -2406,31 +2406,33 @@
                         <span>{includeEstimated ? '已納入預估費用' : '僅統計實際費用'}</span>
                     </div>
 
-                    {/* 支付狀態總覽卡片 */}
-                    <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 ${embedded ? 'mb-4' : 'mb-6'}`}>
-                        {Object.entries(totalStatsByCurrency).map(([cur, stats]) => (
-                            <div key={cur} className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 border-t-4 border-t-emerald-500">
-                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">預算概覽 ({cur})</div>
-                                <div className="flex flex-col gap-1">
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-xs text-slate-500">需備現鈔</span>
-                                        <span className="text-lg font-bold text-emerald-600">{stats.cash.toLocaleString()}</span>
+                    <div className={`grid grid-cols-1 md:grid-cols-2 ${embedded ? 'gap-4 mb-4' : 'gap-6 mb-6'}`}>
+                        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                            <h3 className="text-sm font-bold text-slate-600 mb-4">預算概覽</h3>
+                            <div className="space-y-3">
+                                {Object.entries(totalStatsByCurrency).map(([cur, stats]) => (
+                                    <div key={cur} className="rounded-lg border border-slate-200 p-3 border-l-4 border-l-emerald-500">
+                                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">{cur}</div>
+                                        <div className="flex flex-col gap-1">
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-xs text-slate-500">需備現鈔</span>
+                                                <span className="text-sm font-bold text-emerald-600">{stats.cash.toLocaleString()}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center opacity-60">
+                                                <span className="text-[10px] text-slate-400">已刷卡/沉沒</span>
+                                                <span className="text-xs font-bold text-slate-500">{stats.sunk.toLocaleString()}</span>
+                                            </div>
+                                            <div className="h-[1px] bg-slate-100 my-1"></div>
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-xs font-bold text-slate-700">總計預算</span>
+                                                <span className="text-sm font-bold text-slate-800">{stats.total.toLocaleString()}</span>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div className="flex justify-between items-center opacity-60">
-                                        <span className="text-[10px] text-slate-400">已刷卡/沉沒</span>
-                                        <span className="text-xs font-bold text-slate-500">{stats.sunk.toLocaleString()}</span>
-                                    </div>
-                                    <div className="h-[1px] bg-slate-100 my-1"></div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-xs font-bold text-slate-700">總計預算</span>
-                                        <span className="text-sm font-bold text-slate-800">{stats.total.toLocaleString()}</span>
-                                    </div>
-                                </div>
+                                ))}
                             </div>
-                        ))}
-                    </div>
+                        </div>
 
-                    <div className={`grid grid-cols-1 md:grid-cols-2 ${embedded ? 'gap-4' : 'gap-6'}`}>
                         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
                             <h3 className="text-sm font-bold text-slate-600 mb-4 text-center">花費類別佔比 ({splitBaseCurrency})</h3>
                             <PieChart data={pieData} total={totalCost} />
@@ -2448,24 +2450,25 @@
                                 })}
                             </div>
                         </div>
-                        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                            <h3 className="text-sm font-bold text-slate-600 mb-4">每日花費落點 ({splitBaseCurrency})</h3>
-                            <div className="space-y-4">
-                                {dailyCosts.map(d => {
-                                    const pct = (d.cost / maxDailyCost) * 100;
-                                    return (
-                                        <div key={d.id} className="relative">
-                                            <div className="flex justify-between text-xs font-medium text-slate-500 mb-1">
-                                                <span>{d.title}</span>
-                                                <span className="text-indigo-600 font-mono font-bold">{d.cost.toLocaleString()}</span>
-                                            </div>
-                                            <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
-                                                <div className="h-full bg-gradient-to-r from-indigo-300 to-indigo-500 rounded-full transition-all duration-500" style={{ width: `${pct}%` }}></div>
-                                            </div>
+                    </div>
+
+                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                        <h3 className="text-sm font-bold text-slate-600 mb-4">每日花費落點 ({splitBaseCurrency})</h3>
+                        <div className="space-y-4">
+                            {dailyCosts.map(d => {
+                                const pct = (d.cost / maxDailyCost) * 100;
+                                return (
+                                    <div key={d.id} className="relative">
+                                        <div className="flex justify-between text-xs font-medium text-slate-500 mb-1">
+                                            <span>{d.title}</span>
+                                            <span className="text-indigo-600 font-mono font-bold">{d.cost.toLocaleString()}</span>
                                         </div>
-                                    );
-                                })}
-                            </div>
+                                        <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                                            <div className="h-full bg-gradient-to-r from-indigo-300 to-indigo-500 rounded-full transition-all duration-500" style={{ width: `${pct}%` }}></div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
                 </div>
