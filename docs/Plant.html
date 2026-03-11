@@ -5024,6 +5024,51 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                         <span className="hidden sm:inline">地圖</span>
                     </button>
 
+                    <label className="bg-indigo-600 hover:bg-indigo-500 text-white px-2 sm:px-3 py-1 sm:py-1.5 rounded text-xs sm:text-sm font-semibold shadow flex items-center gap-1 shrink-0 cursor-pointer" title="匯入 JSON">
+                        <i className="fas fa-file-import"></i>
+                        <span className="hidden sm:inline">匯入</span>
+                        <input type="file" accept=".json" onChange={importJSON} className="hidden" />
+                    </label>
+
+                    <button
+                        onClick={exportJSON}
+                        className="bg-emerald-600 hover:bg-emerald-500 text-white px-2 sm:px-3 py-1 sm:py-1.5 rounded text-xs sm:text-sm font-semibold shadow flex items-center gap-1 shrink-0"
+                        title="匯出 JSON"
+                    >
+                        <i className="fas fa-file-export"></i>
+                        <span className="hidden sm:inline">匯出</span>
+                    </button>
+
+                    <button
+                        onClick={() => {
+                            if (activeDayId === 'checklist') {
+                                alert('行前清單模式下無法儲存為圖片，請切換至一般行程');
+                                return;
+                            }
+                            exportHTML();
+                        }}
+                        className="bg-amber-500 hover:bg-amber-400 text-slate-900 px-2 sm:px-3 py-1 sm:py-1.5 rounded text-xs sm:text-sm font-semibold shadow flex items-center gap-1 shrink-0"
+                        title="儲存為圖片"
+                    >
+                        <i className="fas fa-camera"></i>
+                        <span className="hidden sm:inline">儲存</span>
+                    </button>
+
+                    <button
+                        onClick={() => {
+                            if (activeDayId === 'checklist') {
+                                alert('行前清單模式下無法匯出 PDF，請切換至一般行程');
+                                return;
+                            }
+                            setShowPdfSettings(true);
+                        }}
+                        className="bg-rose-600 hover:bg-rose-500 text-white px-2 sm:px-3 py-1 sm:py-1.5 rounded text-xs sm:text-sm font-semibold shadow flex items-center gap-1 shrink-0"
+                        title="文件輸出"
+                    >
+                        <i className="fas fa-file-pdf"></i>
+                        <span className="hidden sm:inline">輸出</span>
+                    </button>
+
                     {/* 更多功能下拉選單 */}
                     <div ref={moreMenuRef} className="relative">
                         <button 
@@ -5041,33 +5086,6 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                     <div className="px-4 pt-1 pb-0.5 text-[10px] text-slate-400 font-bold tracking-wider">備忘</div>
                                     <button onClick={() => { setShowCorkboard(true); setShowMoreMenu(false); }} className="px-4 py-2 text-left text-sm text-slate-200 hover:bg-slate-700 flex items-center gap-2">
                                         <i className="fas fa-thumbtack text-purple-400 w-4"></i> 備忘錄黑板
-                                    </button>
-                                    
-                                    <div className="h-[1px] bg-slate-700 mx-2 my-1"></div>
-                                    <div className="px-4 pt-0.5 pb-0.5 text-[10px] text-slate-400 font-bold tracking-wider">資料</div>
-                                    <button 
-                                        onClick={() => { 
-                                            if (activeDayId === 'checklist') {
-                                                alert('行前清單模式下無法儲存為圖片，請切換至一般行程');
-                                            } else {
-                                                exportHTML();
-                                            }
-                                            setShowMoreMenu(false);
-                                        }} 
-                                        className="px-4 py-2 text-left text-sm text-slate-200 hover:bg-slate-700 flex items-center gap-2"
-                                    >
-                                        <i className="fas fa-camera text-emerald-400 w-4"></i> 儲存為圖片
-                                    </button>
-
-                                    <div className="h-[1px] bg-slate-700 mx-2 my-1"></div>
-
-                                    <label className="px-4 py-2 text-left text-sm text-slate-200 hover:bg-slate-700 flex items-center gap-2 cursor-pointer">
-                                        <i className="fas fa-upload text-blue-400 w-4"></i> 匯入
-                                        <input type="file" accept=".json" onChange={importJSON} className="hidden" />
-                                    </label>
-
-                                    <button onClick={() => { exportJSON(); setShowMoreMenu(false); }} className="px-4 py-2 text-left text-sm text-slate-200 hover:bg-slate-700 flex items-center gap-2">
-                                        <i className="fas fa-download text-emerald-400 w-4"></i> 匯出 JSON
                                     </button>
 
                                     <div className="h-[1px] bg-slate-700 mx-2 my-1"></div>
@@ -5117,43 +5135,6 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
 
                                     <button onClick={() => { shareExport(); setShowMoreMenu(false); }} className="px-4 py-2 text-left text-sm text-slate-200 hover:bg-slate-700 flex items-center gap-2">
                                         <i className="fas fa-share-alt text-teal-400 w-4"></i> 分享行程
-                                    </button>
-
-                                    <div className="h-[1px] bg-slate-700 mx-2 my-1"></div>
-                                    <div className="px-4 pt-0.5 pb-0.5 text-[10px] text-slate-400 font-bold tracking-wider">文件輸出</div>
-
-                                    <button 
-                                        onClick={() => {
-                                            if (activeDayId === 'checklist') {
-                                                alert('行前清單模式下無法匯出 PDF，請切換至一般行程');
-                                            } else {
-                                                setShowPdfSettings(true);
-                                            }
-                                            setShowMoreMenu(false);
-                                        }}
-                                        disabled={isExporting}
-                                        className="px-4 py-2 text-left text-sm text-slate-200 hover:bg-slate-700 flex items-center gap-2 disabled:opacity-50"
-                                    >
-                                        <i className={`fas ${isExporting ? 'fa-spinner fa-spin' : 'fa-file-pdf'} text-red-400 w-4`}></i> {isExporting ? '產生中...' : '匯出 PDF (A4)'}
-                                    </button>
-
-                                    <button 
-                                        onClick={() => {
-                                            if (activeDayId === 'checklist') {
-                                                alert('行前清單模式下無法匯出口袋手冊，請切換至一般行程');
-                                            } else {
-                                                exportPocketManual();
-                                            }
-                                            setShowMoreMenu(false);
-                                        }}
-                                        disabled={isExporting}
-                                        className="px-4 py-2 text-left text-sm text-slate-200 hover:bg-slate-700 flex items-center gap-2 disabled:opacity-50"
-                                    >
-                                        <i className={`fas ${isExporting ? 'fa-spinner fa-spin' : 'fa-mobile-alt'} text-blue-400 w-4`}></i> {isExporting ? '產生中...' : '匯出口袋手冊 (A6)'}
-                                    </button>
-
-                                    <button onClick={() => { exportMarkdown(); setShowMoreMenu(false); }} className="px-4 py-2 text-left text-sm text-slate-200 hover:bg-slate-700 flex items-center gap-2">
-                                        <i className="fab fa-markdown text-sky-400 w-4"></i> 匯出 Markdown
                                     </button>
                                 </div>
                             </>
