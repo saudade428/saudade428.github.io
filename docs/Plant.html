@@ -29,6 +29,9 @@
         html { font-size: 16px; }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8fafc; overflow-x: hidden; }
         .timeline-line { position: absolute; left: 1.25rem; top: 0; bottom: 0; width: 2px; background-color: #cbd5e1; z-index: 0; }
+        @media (max-width: 640px) {
+            .timeline-line { left: 0.8rem; width: 1.5px; }
+        }
         .memo-drag-handle { cursor: grab; }
         .memo-drag-handle:active { cursor: grabbing; }
         .hide-scrollbar::-webkit-scrollbar { display: none; }
@@ -1980,7 +1983,7 @@
                     onDragEnd={onDragEnd}
                 >
                     {/* 時間軸上的點與時間輸入 */}
-                    <div className="absolute -left-[2.5rem] md:-left-[4.5rem] top-3 flex flex-col items-center z-0 w-16 group/time">
+                    <div className="absolute -left-[2rem] sm:-left-[2.5rem] md:-left-[4.5rem] top-3 flex flex-col items-center z-0 w-12 sm:w-16 group/time">
                         <div 
                             className="relative w-full mb-1 cursor-pointer"
                             onClick={(e) => {
@@ -1998,16 +2001,16 @@
                                 value={node.time || ""}
                                 onChange={(e) => dispatch({ type: PLAN_ACTIONS.UPDATE_NODE_TIME, payload: { planId, dayId, nodeId: node.id, time: e.target.value } })}
                             />
-                            <div className="text-[10px] md:text-xs font-bold text-slate-400 bg-slate-100/50 py-0.5 px-1 rounded border border-slate-200 hover:border-blue-300 hover:text-blue-500 transition-all text-center">
+                            <div className="text-[9px] sm:text-[10px] md:text-xs font-bold text-slate-400 bg-slate-100/50 py-0.5 px-1 rounded border border-slate-200 hover:border-blue-300 hover:text-blue-500 transition-all text-center leading-tight">
                                 {node.time || "時間"}
                             </div>
                         </div>
-                        <div className="w-4 h-4 rounded-full border-4 border-white shadow bg-white relative z-0" style={{ backgroundColor: nodeStyle.border }}></div>
+                        <div className="w-3 h-3 sm:w-4 sm:h-4 rounded-full border-[3px] sm:border-4 border-white shadow bg-white relative z-0" style={{ backgroundColor: nodeStyle.border }}></div>
                     </div>
                     
                     {/* 節點卡片 */}
                     <div 
-                        className={`relative overflow-visible ml-2 md:ml-4 p-3 md:p-4 rounded-xl border-l-4 shadow-sm transition-all hover:shadow-md bg-white ${isCollapsed ? 'py-2 opacity-80' : ''}`}
+                        className={`relative overflow-visible ml-1 sm:ml-2 md:ml-4 p-3 md:p-4 rounded-xl border-l-4 shadow-sm transition-all hover:shadow-md bg-white ${isCollapsed ? 'py-2 opacity-80' : ''}`}
                         style={{ 
                             borderLeftColor: nodeStyle.border,
                             borderColor: node.type === 'transit' ? nodeStyle.border : '#e2e8f0' 
@@ -5307,7 +5310,7 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                     )}
 
                         {/* --- 主要內容區：時間軸與節點（只渲染當前選中天數） --- */}
-                        <main className="max-w-5xl mx-auto mt-6 px-4 pl-16 md:pl-24 relative">
+                        <main className="max-w-5xl mx-auto mt-6 px-2 sm:px-4 pl-11 sm:pl-16 md:pl-24 relative">
                             {/* 貫穿全域的時間軸線 */}
                             <div className="timeline-line"></div>
     
@@ -5459,7 +5462,7 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
 
                                 {/* 新增節點按鈕 */}
                                 <div className="mt-4 relative">
-                                    <div className="absolute -left-[1.65rem] md:-left-[3.65rem] top-2 w-3 h-3 rounded-full bg-slate-300 z-10"></div>
+                                    <div className="absolute -left-[1.15rem] sm:-left-[1.65rem] md:-left-[3.65rem] top-2 w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-slate-300 z-10"></div>
                                     <button 
                                         onClick={() => dispatch({ 
                                             type: PLAN_ACTIONS.ADD_NODE, 
