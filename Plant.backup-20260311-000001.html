@@ -7060,8 +7060,13 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
 
                     {/* 手機 Day 摘要抽屜 */}
                     {disableHoverTooltip && activePlan && mobilePreviewDayId && (() => {
+                        console.log('Mobile bottom sheet rendering:', { disableHoverTooltip, activePlanId: activePlan?.id, mobilePreviewDayId });
                         const mobileDay = activePlan.days.find(d => d.id === mobilePreviewDayId);
-                        if (!mobileDay) return null;
+                        if (!mobileDay) {
+                            console.warn('Day not found:', mobilePreviewDayId);
+                            return null;
+                        }
+                        console.log('Rendering mobile day sheet for:', mobileDay.title);
                         return (
                             <div className="fixed inset-0 z-[9998] sm:hidden">
                                 <div className="absolute inset-0 bg-black/35" onClick={() => setMobilePreviewDayId(null)}></div>
