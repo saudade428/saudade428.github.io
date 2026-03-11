@@ -325,7 +325,10 @@
                         const rules = getPlanCompanionRules(plan);
                         const next = normalizeExpenseItems(n).map(it => {
                             if (it.id !== payload.expenseId) return it;
-                            let updated = { ...it, [payload.field]: payload.value };
+                            const nextValue = payload.field === 'amount'
+                                ? Math.max(0, Number(payload.value || 0))
+                                : payload.value;
+                            let updated = { ...it, [payload.field]: nextValue };
                             if (payload.field === 'category' && rules.autoApplyOnCategoryChange) {
                                 updated = applyCategoryRuleToExpenseItem(updated, plan, { force: false });
                             }
@@ -2098,15 +2101,20 @@
                                                         <option value="KRW">KRW</option>
                                                     </select>
                                                     <input
-                                                        type="number"
+                                                        type="text"
+                                                        inputMode="decimal"
                                                         className="text-xs font-bold text-emerald-600 bg-white py-0.5 px-2 w-20 focus:ring-0 border border-slate-200 rounded"
-                                                        value={item.amount || 0}
+                                                        value={String(Math.max(0, Number(item.amount || 0)))}
                                                         onFocus={(e) => {
                                                             if (Number(item.amount || 0) === 0) {
                                                                 e.target.select();
                                                             }
                                                         }}
-                                                        onChange={(e) => dispatch({ type: PLAN_ACTIONS.UPDATE_NODE_EXPENSE_ITEM, payload: { planId, dayId, nodeId: node.id, expenseId: item.id, field: 'amount', value: Number(e.target.value) } })}
+                                                        onChange={(e) => {
+                                                            const raw = (e.target.value || '').replace(/[^0-9.]/g, '');
+                                                            const next = Number(raw || 0);
+                                                            dispatch({ type: PLAN_ACTIONS.UPDATE_NODE_EXPENSE_ITEM, payload: { planId, dayId, nodeId: node.id, expenseId: item.id, field: 'amount', value: Number.isFinite(next) ? next : 0 } });
+                                                        }}
                                                         placeholder="0"
                                                     />
                                                     <select
@@ -2553,7 +2561,10 @@
 
             const MAX_HISTORY = 50;
             const SNAPSHOT_STORAGE_KEY = 'travelPlanSnapshotsV1';
+            const SPLIT_SETTINGS_STORAGE_KEY = 'travelSplitSettingsV1';
+            const SPLIT_REPORT_STORAGE_KEY = 'travelSplitReportsV1';
             const MAX_SNAPSHOTS = 15;
+            const MAX_SPLIT_REPORTS = 30;
             const AUTO_SNAPSHOT_ACTIONS = new Set([
                 PLAN_ACTIONS.ADD_DAY,
                 PLAN_ACTIONS.DELETE_DAY,
@@ -2579,6 +2590,15 @@
                     return [];
                 }
             });
+            const [splitReports, setSplitReports] = useState(() => {
+                try {
+                    const raw = localStorage.getItem(SPLIT_REPORT_STORAGE_KEY);
+                    const parsed = raw ? JSON.parse(raw) : [];
+                    return Array.isArray(parsed) ? parsed : [];
+                } catch {
+                    return [];
+                }
+            });
 
             useEffect(() => {
                 try {
@@ -2587,6 +2607,14 @@
                     console.warn('snapshot 存檔失敗', e);
                 }
             }, [snapshots]);
+
+            useEffect(() => {
+                try {
+                    localStorage.setItem(SPLIT_REPORT_STORAGE_KEY, JSON.stringify(splitReports));
+                } catch (e) {
+                    console.warn('split report 存檔失敗', e);
+                }
+            }, [splitReports]);
 
             const createSnapshot = useCallback((label, snapshotData = dataRef.current) => {
                 const entry = {
@@ -2767,13 +2795,43 @@
             const [showMoreMenu, setShowMoreMenu] = useState(false);
             const [showUtilityMenu, setShowUtilityMenu] = useState(false);
             const [includeEstimatedInSplit, setIncludeEstimatedInSplit] = useState(false);
-            const [splitBaseCurrency, setSplitBaseCurrency] = useState('TWD');
-            const [exchangeRatesToTwd, setExchangeRatesToTwd] = useState(DEFAULT_EXCHANGE_RATES_TO_TWD);
+            const [splitBaseCurrency, setSplitBaseCurrency] = useState(() => {
+                try {
+                    const raw = localStorage.getItem(SPLIT_SETTINGS_STORAGE_KEY);
+                    const parsed = raw ? JSON.parse(raw) : null;
+                    return parsed?.splitBaseCurrency || 'TWD';
+                } catch {
+                    return 'TWD';
+                }
+            });
+            const [exchangeRatesToTwd, setExchangeRatesToTwd] = useState(() => {
+                try {
+                    const raw = localStorage.getItem(SPLIT_SETTINGS_STORAGE_KEY);
+                    const parsed = raw ? JSON.parse(raw) : null;
+                    return {
+                        ...DEFAULT_EXCHANGE_RATES_TO_TWD,
+                        ...(parsed?.exchangeRatesToTwd || {})
+                    };
+                } catch {
+                    return DEFAULT_EXCHANGE_RATES_TO_TWD;
+                }
+            });
             const [splitKeyword, setSplitKeyword] = useState('');
             const [splitStatusFilter, setSplitStatusFilter] = useState('all');
             const [splitCurrencyFilter, setSplitCurrencyFilter] = useState('all');
             const [splitPayerFilter, setSplitPayerFilter] = useState('all');
             const [splitUserFilter, setSplitUserFilter] = useState('all');
+
+            useEffect(() => {
+                try {
+                    localStorage.setItem(SPLIT_SETTINGS_STORAGE_KEY, JSON.stringify({
+                        splitBaseCurrency,
+                        exchangeRatesToTwd
+                    }));
+                } catch (e) {
+                    console.warn('split setting 存檔失敗', e);
+                }
+            }, [splitBaseCurrency, exchangeRatesToTwd]);
 
             const utilityModes = [
                 { id: 'checklist', label: '行前清單', shortLabel: '清單', icon: 'fa-clipboard-check', activeCls: 'bg-amber-100 text-amber-700 border-amber-200' },
@@ -2969,6 +3027,20 @@
                 const more = issues.length > shown.length ? `\n...另有 ${issues.length - shown.length} 項，建議逐日檢查。` : '';
                 alert(`健康檢查完成：發現 ${issues.length} 項風險\n\n- ${shown.join('\n- ')}${more}`);
             }, [activePlan]);
+
+            const saveSplitReportSnapshot = useCallback((report) => {
+                if (!report || !report.planId) return;
+                const entry = {
+                    id: generateId(),
+                    createdAt: Date.now(),
+                    ...report
+                };
+                setSplitReports(prev => [entry, ...prev].slice(0, MAX_SPLIT_REPORTS));
+            }, []);
+
+            const deleteSplitReportSnapshot = useCallback((reportId) => {
+                setSplitReports(prev => prev.filter(r => r.id !== reportId));
+            }, []);
 
             const smartArrangeActiveDay = useCallback(() => {
                 if (!activePlan || !activeDay) {
@@ -5328,6 +5400,7 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                         });
 
                         const settlementSuggestions = calculateSettlementTransfers(summary);
+                        const planSplitReports = splitReports.filter(r => r.planId === activePlan.id).slice(0, 5);
 
                         const statusTotals = allEntries.reduce((acc, it) => {
                             const key = it.expenseStatus === 'estimated' ? 'estimated' : 'actual';
@@ -5564,6 +5637,58 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                                         </div>
                                                     );
                                                 })}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="mb-6">
+                                        <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                                            <h3 className="text-sm font-bold text-slate-700 flex items-center gap-1.5"><i className="fas fa-bookmark text-cyan-500"></i> 分帳報表快照</h3>
+                                            <button
+                                                onClick={() => {
+                                                    saveSplitReportSnapshot({
+                                                        planId: activePlan.id,
+                                                        planName: activePlan.name,
+                                                        baseCurrency: splitBaseCurrency,
+                                                        includeEstimatedInSplit,
+                                                        summary: summary.map(s => ({
+                                                            id: s.id,
+                                                            name: s.name,
+                                                            color: s.color,
+                                                            paid: Number(s.paid || 0),
+                                                            shouldPay: Number(s.shouldPay || 0),
+                                                            diff: Number(s.diff || 0)
+                                                        })),
+                                                        settlements: settlementSuggestions.map(t => ({
+                                                            fromId: t.fromId,
+                                                            toId: t.toId,
+                                                            amount: Number(t.amount || 0)
+                                                        }))
+                                                    });
+                                                    alert('已保存目前分帳報表快照，可供下次參考。');
+                                                }}
+                                                className="text-xs px-3 py-1.5 rounded border border-cyan-200 text-cyan-700 hover:bg-cyan-50 font-semibold"
+                                            >
+                                                <i className="fas fa-save mr-1"></i> 保存目前報表
+                                            </button>
+                                        </div>
+                                        {planSplitReports.length === 0 ? (
+                                            <div className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                                                尚未保存報表快照。
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-2">
+                                                {planSplitReports.map(rep => (
+                                                    <div key={rep.id} className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs">
+                                                        <div className="flex items-center justify-between gap-2 mb-1">
+                                                            <div className="font-semibold text-slate-700">{rep.planName} · {rep.baseCurrency} · {new Date(rep.createdAt).toLocaleString('zh-TW', { hour12: false })}</div>
+                                                            <button onClick={() => deleteSplitReportSnapshot(rep.id)} className="text-rose-500 hover:text-rose-700" title="刪除此快照">
+                                                                <i className="fas fa-trash"></i>
+                                                            </button>
+                                                        </div>
+                                                        <div className="text-slate-500">{rep.includeEstimatedInSplit ? '含預估費用' : '僅實際費用'} / 旅伴 {Array.isArray(rep.summary) ? rep.summary.length : 0} 人</div>
+                                                    </div>
+                                                ))}
                                             </div>
                                         )}
                                     </div>
