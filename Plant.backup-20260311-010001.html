@@ -1835,12 +1835,13 @@
             const subtaskSummaryText = hasSubtaskData ? `${subtaskDoneCount}/${subtaskCount} 完成` : '尚未新增';
             const childSummaryText = hasChildData ? `${childCount} 個子方案` : '尚未新增';
             const linkedMemos = (currentMemos || []).filter(m => m.linkedNodeId === node.id);
-            const primaryLinkedMemo = linkedMemos[0] || null;
 
             const [memoPinned, setMemoPinned] = useState(false);
             const [memoHoverOpen, setMemoHoverOpen] = useState(false);
+            const [activeMemoId, setActiveMemoId] = useState(null);
             const [memoDraftTitle, setMemoDraftTitle] = useState('');
             const [memoDraftText, setMemoDraftText] = useState('');
+            const activeLinkedMemo = linkedMemos.find(m => m.id === activeMemoId) || linkedMemos[0] || null;
 
             const [sectionCollapsed, setSectionCollapsed] = useState({ expense: true, subtask: true, child: true });
             useEffect(() => {
@@ -1857,9 +1858,19 @@
             useEffect(() => {
                 setMemoPinned(false);
                 setMemoHoverOpen(false);
-                setMemoDraftTitle(primaryLinkedMemo?.title || '');
-                setMemoDraftText(primaryLinkedMemo?.text || '');
-            }, [node.id, primaryLinkedMemo?.id]);
+                const nextMemo = linkedMemos[0] || null;
+                setActiveMemoId(nextMemo?.id || null);
+                setMemoDraftTitle(nextMemo?.title || '');
+                setMemoDraftText(nextMemo?.text || '');
+            }, [node.id]);
+
+            useEffect(() => {
+                const stillExists = linkedMemos.some(m => m.id === activeMemoId);
+                const nextMemo = stillExists ? linkedMemos.find(m => m.id === activeMemoId) : (linkedMemos[0] || null);
+                setActiveMemoId(nextMemo?.id || null);
+                setMemoDraftTitle(nextMemo?.title || '');
+                setMemoDraftText(nextMemo?.text || '');
+            }, [linkedMemos, activeMemoId]);
 
             const toggleSection = (key) => setSectionCollapsed(prev => ({ ...prev, [key]: !prev[key] }));
             const areAllDetailSectionsCollapsed = sectionCollapsed.expense && sectionCollapsed.subtask && sectionCollapsed.child;
@@ -1872,15 +1883,15 @@
             };
             const memoExpanded = memoPinned || memoHoverOpen;
             const upsertLinkedMemo = (field, value) => {
-                if (primaryLinkedMemo) {
+                if (activeLinkedMemo) {
                     dispatch({
                         type: PLAN_ACTIONS.UPDATE_MEMO,
                         payload: {
                             planId,
                             dayId,
-                            memoId: primaryLinkedMemo.id,
+                            memoId: activeLinkedMemo.id,
                             updatedMemo: {
-                                ...primaryLinkedMemo,
+                                ...activeLinkedMemo,
                                 title: field === 'title' ? value : memoDraftTitle,
                                 text: field === 'text' ? value : memoDraftText
                             }
@@ -1914,6 +1925,32 @@
                         }
                     }
                 });
+            };
+            const addAnotherLinkedMemo = () => {
+                const newMemoId = generateId();
+                dispatch({
+                    type: PLAN_ACTIONS.ADD_MEMO,
+                    payload: {
+                        planId,
+                        dayId,
+                        memo: {
+                            id: newMemoId,
+                            x: 100,
+                            y: 220,
+                            width: 224,
+                            height: null,
+                            title: '',
+                            text: '',
+                            color: 'bg-yellow-200',
+                            image: null,
+                            linkedNodeId: node.id,
+                            isMinimized: false
+                        }
+                    }
+                });
+                setActiveMemoId(newMemoId);
+                setMemoDraftTitle('');
+                setMemoDraftText('');
             };
 
             return (
@@ -1981,18 +2018,27 @@
                                             <div className="text-[10px] font-bold text-amber-700">節點備忘</div>
                                             <div className="flex items-center gap-1">
                                                 <button
+                                                    onClick={addAnotherLinkedMemo}
+                                                    className="text-[10px] px-1.5 py-0.5 rounded border border-amber-200 bg-white text-amber-700 hover:bg-amber-100"
+                                                    title="新增書籤"
+                                                >
+                                                    <i className="fas fa-plus"></i>
+                                                </button>
+                                                <button
                                                     onClick={() => setMemoPinned(v => !v)}
                                                     className={`text-[10px] px-1.5 py-0.5 rounded border ${memoPinned ? 'bg-amber-200 border-amber-300 text-amber-800' : 'bg-white border-amber-200 text-amber-700 hover:bg-amber-100'}`}
                                                     title={memoPinned ? '取消釘選' : '釘選'}
                                                 >
                                                     <i className="fas fa-thumbtack"></i>
                                                 </button>
-                                                {primaryLinkedMemo && (
+                                                {activeLinkedMemo && (
                                                     <button
                                                         onClick={() => {
-                                                            dispatch({ type: PLAN_ACTIONS.DELETE_MEMO, payload: { planId, dayId, memoId: primaryLinkedMemo.id } });
-                                                            setMemoDraftTitle('');
-                                                            setMemoDraftText('');
+                                                            const rest = linkedMemos.filter(m => m.id !== activeLinkedMemo.id);
+                                                            dispatch({ type: PLAN_ACTIONS.DELETE_MEMO, payload: { planId, dayId, memoId: activeLinkedMemo.id } });
+                                                            setActiveMemoId(rest[0]?.id || null);
+                                                            setMemoDraftTitle(rest[0]?.title || '');
+                                                            setMemoDraftText(rest[0]?.text || '');
                                                         }}
                                                         className="text-[10px] px-1.5 py-0.5 rounded border border-rose-200 text-rose-600 hover:bg-rose-50"
                                                         title="刪除備忘"
@@ -2002,6 +2048,27 @@
                                                 )}
                                             </div>
                                         </div>
+                                        {linkedMemos.length > 0 && (
+                                            <div className="flex items-center gap-1 mb-1 overflow-x-auto hide-scrollbar">
+                                                {linkedMemos.map((m, idx) => {
+                                                    const isActive = m.id === (activeLinkedMemo?.id || '');
+                                                    return (
+                                                        <button
+                                                            key={m.id}
+                                                            onClick={() => {
+                                                                setActiveMemoId(m.id);
+                                                                setMemoDraftTitle(m.title || '');
+                                                                setMemoDraftText(m.text || '');
+                                                            }}
+                                                            className={`shrink-0 text-[10px] px-2 py-0.5 rounded border ${isActive ? 'bg-amber-200 border-amber-300 text-amber-800' : 'bg-white border-amber-100 text-amber-700 hover:bg-amber-100'}`}
+                                                            title={m.title || `書籤 ${idx + 1}`}
+                                                        >
+                                                            {m.title?.trim() ? m.title.slice(0, 8) : `書籤${idx + 1}`}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
                                         <input
                                             className="w-full text-xs bg-white border border-amber-100 rounded px-2 py-1 mb-1"
                                             value={memoDraftTitle}
@@ -2022,7 +2089,7 @@
                                             }}
                                             placeholder="滑到此節點即可直接編輯..."
                                         />
-                                        {!primaryLinkedMemo && (memoDraftTitle.trim() === '' && memoDraftText.trim() === '') && (
+                                        {!activeLinkedMemo && (memoDraftTitle.trim() === '' && memoDraftText.trim() === '') && (
                                             <div className="text-[10px] text-amber-600 mt-1">尚未建立資料，開始輸入後會自動綁定到此節點。</div>
                                         )}
                                     </div>
