@@ -1961,18 +1961,19 @@
                         }}
                     >
                         <div
-                            className="absolute top-2 right-2 md:right-auto md:left-full md:ml-2 z-30"
+                            className="absolute top-2 right-2 md:right-auto md:left-full md:ml-0 z-30"
                             onMouseEnter={() => setMemoHoverOpen(true)}
                             onMouseLeave={() => { if (!memoPinned) setMemoHoverOpen(false); }}
                         >
                             <div className="flex items-start">
                                 <button
                                     onClick={() => setMemoHoverOpen(v => !v)}
-                                    className={`h-16 w-7 rounded-md border shadow flex flex-col items-center justify-center gap-0.5 transition-colors ${memoExpanded ? 'bg-amber-200 border-amber-300 text-amber-800' : 'bg-amber-100 border-amber-200 text-amber-700 hover:bg-amber-200'}`}
+                                    className={`relative h-16 w-8 rounded-l-lg rounded-r-sm border shadow flex flex-col items-center justify-center gap-0.5 transition-all md:-translate-x-1/2 ${memoExpanded ? 'bg-amber-200 border-amber-300 text-amber-800' : 'bg-amber-100 border-amber-200 text-amber-700 hover:bg-amber-200'}`}
                                     title="節點便利貼"
                                 >
                                     <i className="far fa-sticky-note text-[11px]"></i>
                                     {linkedMemos.length > 0 && <span className="text-[9px] font-bold leading-none">{linkedMemos.length}</span>}
+                                    <span className={`pointer-events-none absolute -bottom-2 left-0 w-0 h-0 border-l-[16px] border-l-transparent border-r-0 border-t-[8px] ${memoExpanded ? 'border-t-amber-200' : 'border-t-amber-100'}`}></span>
                                 </button>
                                 {memoExpanded && (
                                     <div className="w-64 bg-amber-50 border border-amber-200 rounded-lg p-2 shadow-xl ml-1">
