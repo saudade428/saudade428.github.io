@@ -5289,8 +5289,6 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                 <div 
                                     key={day.id} 
                                     className="flex flex-col items-center group/daywrapper relative"
-                                    onMouseEnter={(e) => !disableHoverTooltip && handleTooltipEnter(day, e.currentTarget.getBoundingClientRect())}
-                                    onMouseLeave={() => !disableHoverTooltip && handleTooltipLeave()}
                                 >
                                     {/* 副標題顯示在分頁上方 */}
                                     <div className="text-[11px] text-slate-400 leading-tight max-w-[120px] min-h-[1.75rem] mb-1 px-1 text-center overflow-hidden text-ellipsis whitespace-nowrap transition-opacity">
@@ -5299,6 +5297,8 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                     
                                     <div className="flex items-center gap-0.5 shrink-0">
                                         <button 
+                                            onMouseEnter={(e) => !disableHoverTooltip && handleTooltipEnter(day, e.currentTarget.getBoundingClientRect())}
+                                            onMouseLeave={() => !disableHoverTooltip && handleTooltipLeave()}
                                             onClick={() => {
                                                 if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
                                                 setHoveredDay(null);
