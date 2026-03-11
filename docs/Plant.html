@@ -2920,6 +2920,7 @@
 
         // --- 主應用程式元件 ---
         const App = () => {
+            console.log('[App Init] React App is starting up...');
             const [data, _dispatchRaw] = useReducer(planReducer, null, () => {
                 try {
                     const saved = localStorage.getItem('travelPlanData');
@@ -3239,7 +3240,9 @@
                     const coarsePointer = typeof window !== 'undefined'
                         && window.matchMedia
                         && window.matchMedia('(hover: none), (pointer: coarse)').matches;
-                    setDisableHoverTooltip(Boolean(coarsePointer || window.innerWidth < 640));
+                    const shouldDisable = Boolean(coarsePointer || window.innerWidth < 640);
+                    console.log('[Tooltip] Init/Update:', { coarsePointer, windowWidth: window.innerWidth, shouldDisable });
+                    setDisableHoverTooltip(shouldDisable);
                 };
 
                 updateTooltipCapability();
@@ -3280,6 +3283,10 @@
             useEffect(() => {
                 setMobilePreviewDayId(null);
             }, [activeDayId, activePlanId]);
+
+            useEffect(() => {
+                console.log('[MobilePreview] State changed:', { mobilePreviewDayId, disableHoverTooltip, activePlanId });
+            }, [mobilePreviewDayId, disableHoverTooltip]);
 
             useEffect(() => {
                 const updateHeaderOffset = () => {
