@@ -2826,6 +2826,7 @@
             const [splitUserFilter, setSplitUserFilter] = useState('all');
             const [companionReportExpanded, setCompanionReportExpanded] = useState({});
             const [companionReportDayFilter, setCompanionReportDayFilter] = useState({});
+            const [budgetAnalysisExpanded, setBudgetAnalysisExpanded] = useState(false);
 
             useEffect(() => {
                 try {
@@ -5680,14 +5681,27 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                         )}
                                     </div>
 
-                                    <div className="mb-6 bg-white border border-slate-200 rounded-xl p-4">
-                                        <BudgetView
-                                            activePlan={activePlan}
-                                            splitBaseCurrency={splitBaseCurrency}
-                                            exchangeRatesToTwd={exchangeRatesToTwd}
-                                            includeEstimated={includeEstimatedInSplit}
-                                            embedded={true}
-                                        />
+                                    <div className="mb-6 bg-white border border-slate-200 rounded-xl overflow-hidden">
+                                        <button
+                                            onClick={() => setBudgetAnalysisExpanded(v => !v)}
+                                            className="w-full px-4 py-3 flex items-center justify-between text-left bg-slate-50 hover:bg-slate-100 border-b border-slate-200"
+                                        >
+                                            <span className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                                                <i className="fas fa-chart-pie text-indigo-500"></i> 行程預算分析
+                                            </span>
+                                            <i className={`fas ${budgetAnalysisExpanded ? 'fa-chevron-up' : 'fa-chevron-down'} text-slate-500 text-xs`}></i>
+                                        </button>
+                                        {budgetAnalysisExpanded && (
+                                            <div className="p-4">
+                                                <BudgetView
+                                                    activePlan={activePlan}
+                                                    splitBaseCurrency={splitBaseCurrency}
+                                                    exchangeRatesToTwd={exchangeRatesToTwd}
+                                                    includeEstimated={includeEstimatedInSplit}
+                                                    embedded={true}
+                                                />
+                                            </div>
+                                        )}
                                     </div>
 
                                     <div className="mb-6">
