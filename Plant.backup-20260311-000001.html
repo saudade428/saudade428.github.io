@@ -7059,15 +7059,16 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                     )}
 
                     {/* 手機 Day 摘要抽屜 */}
-                    {disableHoverTooltip && activePlan && mobilePreviewDayId && (() => {
-                        console.log('Mobile bottom sheet rendering:', { disableHoverTooltip, activePlanId: activePlan?.id, mobilePreviewDayId });
-                        const mobileDay = activePlan.days.find(d => d.id === mobilePreviewDayId);
-                        if (!mobileDay) {
-                            console.warn('Day not found:', mobilePreviewDayId);
-                            return null;
-                        }
-                        console.log('Rendering mobile day sheet for:', mobileDay.title);
-                        return (
+                    {(() => {
+                        if (disableHoverTooltip && activePlan && mobilePreviewDayId) {
+                            console.log('[OUTER] Mobile preview conditions:', { disableHoverTooltip, activePlanId: activePlan?.id, mobilePreviewDayId });
+                            const mobileDay = activePlan.days.find(d => d.id === mobilePreviewDayId);
+                            if (!mobileDay) {
+                                console.warn('[OUTER] Day not found:', mobilePreviewDayId);
+                                return null;
+                            }
+                            console.log('[OUTER] Rendering mobile day sheet for:', mobileDay.title);
+                            return (
                             <div className="fixed inset-0 z-[9998] sm:hidden">
                                 <div className="absolute inset-0 bg-black/35" onClick={() => setMobilePreviewDayId(null)}></div>
                                 <div className="absolute left-0 right-0 bottom-0 bg-white rounded-t-2xl border-t border-slate-200 shadow-2xl max-h-[78vh] overflow-hidden">
@@ -7154,6 +7155,8 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                 </div>
                             </div>
                         );
+                        }
+                        return null;
                     })()}
                 </div>
             );
