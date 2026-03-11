@@ -2302,9 +2302,18 @@
             );
         });
 
-        const BudgetView = React.memo(({ activePlan }) => {
+        const BudgetView = React.memo(({ activePlan, splitBaseCurrency = 'TWD', exchangeRatesToTwd = DEFAULT_EXCHANGE_RATES_TO_TWD, includeEstimated = false }) => {
             const allNodes = activePlan.days.flatMap(d => d.nodes);
-            const costItems = allNodes.flatMap(n => normalizeExpenseItems(n).filter(it => Number(it.amount || 0) > 0).map(it => ({ ...it, nodeType: n.type })));
+            const costItems = allNodes.flatMap(n =>
+                normalizeExpenseItems(n)
+                    .filter(it => Number(it.amount || 0) > 0)
+                    .filter(it => includeEstimated || it.expenseStatus !== 'estimated')
+                    .map(it => ({
+                        ...it,
+                        nodeType: n.type,
+                        amountInBase: convertCurrencyAmount(Number(it.amount || 0), it.currency || 'TWD', splitBaseCurrency, exchangeRatesToTwd)
+                    }))
+            );
 
             if (costItems.length === 0) {
                 return (
@@ -2317,7 +2326,7 @@
             }
 
             const pieData = costItems.reduce((acc, it) => {
-                const amount = Number(it.amount) || 0;
+                const amount = Number(it.amountInBase || 0);
                 acc[it.nodeType] = (acc[it.nodeType] || 0) + amount;
                 return acc;
             }, {});
@@ -2340,7 +2349,13 @@
             }, {});
 
             const dailyCosts = activePlan.days.map(d => {
-                const cost = d.nodes.reduce((sum, n) => sum + getNodeExpenseTotal(n), 0);
+                const cost = d.nodes.reduce((sum, n) => {
+                    const nodeSum = normalizeExpenseItems(n)
+                        .filter(it => Number(it.amount || 0) > 0)
+                        .filter(it => includeEstimated || it.expenseStatus !== 'estimated')
+                        .reduce((inner, it) => inner + convertCurrencyAmount(Number(it.amount || 0), it.currency || 'TWD', splitBaseCurrency, exchangeRatesToTwd), 0);
+                    return sum + nodeSum;
+                }, 0);
                 return { id: d.id, title: d.title, cost };
             });
             const maxDailyCost = Math.max(...dailyCosts.map(d => d.cost), 1);
@@ -2386,6 +2401,10 @@
                     <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
                         <i className="fas fa-chart-pie text-indigo-500"></i> 行程預算分析
                     </h2>
+                    <div className="mb-4 text-xs text-slate-600 bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2 flex flex-wrap gap-3 items-center">
+                        <span>統一幣別: <b>{splitBaseCurrency}</b></span>
+                        <span>{includeEstimated ? '已納入預估費用' : '僅統計實際費用'}</span>
+                    </div>
 
                     {/* 支付狀態總覽卡片 */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
@@ -2413,7 +2432,7 @@
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                            <h3 className="text-sm font-bold text-slate-600 mb-4 text-center">花費類別佔比</h3>
+                            <h3 className="text-sm font-bold text-slate-600 mb-4 text-center">花費類別佔比 ({splitBaseCurrency})</h3>
                             <PieChart data={pieData} total={totalCost} />
                             <div className="mt-6 flex flex-wrap justify-center gap-3">
                                 {Object.entries(pieData).sort((a,b)=>b[1]-a[1]).map(([type, val]) => {
@@ -2430,7 +2449,7 @@
                             </div>
                         </div>
                         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                            <h3 className="text-sm font-bold text-slate-600 mb-4">每日花費落點</h3>
+                            <h3 className="text-sm font-bold text-slate-600 mb-4">每日花費落點 ({splitBaseCurrency})</h3>
                             <div className="space-y-4">
                                 {dailyCosts.map(d => {
                                     const pct = (d.cost / maxDailyCost) * 100;
@@ -5897,7 +5916,12 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
 
                     {/* --- B1: 預算儀表板 --- */}
                     {activePlan && activeDayId === 'budget' && (
-                        <BudgetView activePlan={activePlan} />
+                        <BudgetView
+                            activePlan={activePlan}
+                            splitBaseCurrency={splitBaseCurrency}
+                            exchangeRatesToTwd={exchangeRatesToTwd}
+                            includeEstimated={includeEstimatedInSplit}
+                        />
                     )}
 
                     {/* --- B2: 甘特圖時間軸視圖 --- */}
