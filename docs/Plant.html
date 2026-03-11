@@ -2552,21 +2552,65 @@
             }, [data]);
 
             const MAX_HISTORY = 50;
+            const SNAPSHOT_STORAGE_KEY = 'travelPlanSnapshotsV1';
+            const MAX_SNAPSHOTS = 15;
+            const AUTO_SNAPSHOT_ACTIONS = new Set([
+                PLAN_ACTIONS.ADD_DAY,
+                PLAN_ACTIONS.DELETE_DAY,
+                PLAN_ACTIONS.ADD_PLAN,
+                PLAN_ACTIONS.DELETE_PLAN,
+                PLAN_ACTIONS.ADD_NODE,
+                PLAN_ACTIONS.DELETE_NODE,
+                PLAN_ACTIONS.REORDER_NODES,
+                PLAN_ACTIONS.MOVE_NODE_TO_DAY,
+                PLAN_ACTIONS.SWAP_DAYS
+            ]);
             const dataRef = useRef(data);
             dataRef.current = data;
             const historyRef = useRef({ past: [], future: [] });
             const skipHistoryRef = useRef(false);
             const [, forceRender] = useState(0);
+            const [snapshots, setSnapshots] = useState(() => {
+                try {
+                    const raw = localStorage.getItem(SNAPSHOT_STORAGE_KEY);
+                    const parsed = raw ? JSON.parse(raw) : [];
+                    return Array.isArray(parsed) ? parsed : [];
+                } catch {
+                    return [];
+                }
+            });
+
+            useEffect(() => {
+                try {
+                    localStorage.setItem(SNAPSHOT_STORAGE_KEY, JSON.stringify(snapshots));
+                } catch (e) {
+                    console.warn('snapshot 存檔失敗', e);
+                }
+            }, [snapshots]);
+
+            const createSnapshot = useCallback((label, snapshotData = dataRef.current) => {
+                const entry = {
+                    id: generateId(),
+                    label: label || '手動快照',
+                    createdAt: Date.now(),
+                    data: snapshotData
+                };
+                setSnapshots(prev => [entry, ...prev].slice(0, MAX_SNAPSHOTS));
+            }, []);
 
             const dispatch = useCallback((action) => {
                 if (action.type !== PLAN_ACTIONS.SET_DATA && !skipHistoryRef.current) {
                     historyRef.current.past = [...historyRef.current.past, dataRef.current].slice(-MAX_HISTORY);
                     historyRef.current.future = [];
+                    if (AUTO_SNAPSHOT_ACTIONS.has(action.type)) {
+                        const ts = new Date().toLocaleString('zh-TW', { hour12: false });
+                        createSnapshot(`自動快照 ${action.type} (${ts})`, dataRef.current);
+                    }
                 }
                 skipHistoryRef.current = false;
                 _dispatchRaw(action);
                 forceRender(n => n + 1);
-            }, []);
+            }, [createSnapshot]);
 
             const setData = useCallback((newDataOrUpdater) => {
                 const prev = dataRef.current;
@@ -2815,6 +2859,116 @@
                 setActivePlanId(planId);
                 setActiveDayId('checklist');
             };
+
+            const quickCreatePlan = useCallback(() => {
+                const defaultName = `方案 ${data.plans.length + 1}`;
+                const nameInput = window.prompt('請輸入方案名稱：', defaultName);
+                if (nameInput === null) return;
+
+                const dayInput = window.prompt('請輸入天數 (1-30)：', '3');
+                if (dayInput === null) return;
+                const dayCount = Number(dayInput);
+                if (!Number.isInteger(dayCount) || dayCount < 1 || dayCount > 30) {
+                    alert('天數格式錯誤，請輸入 1 到 30 的整數。');
+                    return;
+                }
+
+                const days = Array.from({ length: dayCount }, (_, idx) => ({
+                    id: generateId(),
+                    title: `Day ${idx + 1}`,
+                    subtitle: '',
+                    journal: '',
+                    weather: { condition: '', tempHigh: '', tempLow: '' },
+                    nodes: [],
+                    memos: []
+                }));
+
+                const newPlan = {
+                    id: generateId(),
+                    name: nameInput.trim() || defaultName,
+                    companions: [],
+                    days,
+                    checklists: []
+                };
+
+                dispatch({ type: PLAN_ACTIONS.ADD_PLAN, payload: { plan: newPlan } });
+                setActivePlanId(newPlan.id);
+                setActiveDayId(newPlan.days[0]?.id || 'checklist');
+                createSnapshot(`手動快照 快速建方案 ${newPlan.name}`, {
+                    ...dataRef.current,
+                    plans: [...dataRef.current.plans, newPlan]
+                });
+            }, [data.plans.length, dispatch, createSnapshot]);
+
+            const restoreSnapshotById = useCallback((snapshotId) => {
+                const target = snapshots.find(s => s.id === snapshotId);
+                if (!target) return;
+                if (!window.confirm(`確定要還原到「${target.label}」嗎？目前資料會被覆蓋。`)) return;
+
+                skipHistoryRef.current = true;
+                dispatch({ type: PLAN_ACTIONS.SET_DATA, payload: target.data });
+                setActivePlanId(target.data?.plans?.[0]?.id || null);
+                setActiveDayId('checklist');
+            }, [snapshots, dispatch]);
+
+            const openSnapshotRestorePicker = useCallback(() => {
+                if (!snapshots.length) {
+                    alert('目前沒有可還原的快照。');
+                    return;
+                }
+
+                const shown = snapshots.slice(0, 9);
+                const optionsText = shown
+                    .map((s, idx) => `${idx + 1}. ${s.label} (${new Date(s.createdAt).toLocaleString('zh-TW', { hour12: false })})`)
+                    .join('\n');
+                const input = window.prompt(`輸入要還原的快照編號：\n\n${optionsText}`, '1');
+                if (input === null) return;
+                const pick = Number(input);
+                if (!Number.isInteger(pick) || pick < 1 || pick > shown.length) {
+                    alert('編號無效，請重新操作。');
+                    return;
+                }
+
+                restoreSnapshotById(shown[pick - 1].id);
+            }, [snapshots, restoreSnapshotById]);
+
+            const runPlanHealthCheck = useCallback(() => {
+                if (!activePlan) return;
+
+                const issues = [];
+                activePlan.days.forEach((day, dayIdx) => {
+                    if (!Array.isArray(day.nodes) || day.nodes.length === 0) {
+                        issues.push(`D${dayIdx + 1}：沒有任何節點，建議至少補上交通與住宿。`);
+                        return;
+                    }
+
+                    const conflicts = detectDayConflicts(day);
+                    conflicts.forEach(c => {
+                        issues.push(`D${dayIdx + 1}：${c.message}`);
+                    });
+
+                    const timed = day.nodes
+                        .map(n => ({ title: n.title || '未命名', time: n.time, min: parseTimeToMinutes(n.time) }))
+                        .filter(n => n.min !== null)
+                        .sort((a, b) => a.min - b.min);
+
+                    for (let i = 1; i < timed.length; i += 1) {
+                        const gap = timed[i].min - timed[i - 1].min;
+                        if (gap > 0 && gap < 20) {
+                            issues.push(`D${dayIdx + 1}：${timed[i - 1].title} 與 ${timed[i].title} 僅間隔 ${gap} 分鐘，轉場可能過緊。`);
+                        }
+                    }
+                });
+
+                if (issues.length === 0) {
+                    alert(`健康檢查完成：${activePlan.name} 未發現明顯衝突。`);
+                    return;
+                }
+
+                const shown = issues.slice(0, 12);
+                const more = issues.length > shown.length ? `\n...另有 ${issues.length - shown.length} 項，建議逐日檢查。` : '';
+                alert(`健康檢查完成：發現 ${issues.length} 項風險\n\n- ${shown.join('\n- ')}${more}`);
+            }, [activePlan]);
 
             // 備忘錄與清單狀態
             const currentMemos = activeDay?.memos || [];
@@ -4511,6 +4665,32 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
 
                                     <button onClick={() => { exportJSON(); setShowMoreMenu(false); }} className="px-4 py-2 text-left text-sm text-slate-200 hover:bg-slate-700 flex items-center gap-2">
                                         <i className="fas fa-download text-emerald-400 w-4"></i> 匯出 JSON
+                                    </button>
+
+                                    <div className="h-[1px] bg-slate-700 mx-2 my-1"></div>
+                                    <div className="px-4 pt-0.5 pb-0.5 text-[10px] text-slate-400 font-bold tracking-wider">P0 升級</div>
+
+                                    <button onClick={() => { quickCreatePlan(); setShowMoreMenu(false); }} className="px-4 py-2 text-left text-sm text-slate-200 hover:bg-slate-700 flex items-center gap-2">
+                                        <i className="fas fa-wand-magic-sparkles text-cyan-400 w-4"></i> 快速建立方案
+                                    </button>
+
+                                    <button onClick={() => {
+                                        const customLabel = window.prompt('快照名稱（可留空）：', `手動快照 ${new Date().toLocaleString('zh-TW', { hour12: false })}`);
+                                        if (customLabel !== null) {
+                                            createSnapshot(customLabel.trim() || '手動快照');
+                                            alert('快照建立完成。');
+                                        }
+                                        setShowMoreMenu(false);
+                                    }} className="px-4 py-2 text-left text-sm text-slate-200 hover:bg-slate-700 flex items-center gap-2">
+                                        <i className="fas fa-camera-retro text-amber-300 w-4"></i> 建立版本快照
+                                    </button>
+
+                                    <button onClick={() => { openSnapshotRestorePicker(); setShowMoreMenu(false); }} className="px-4 py-2 text-left text-sm text-slate-200 hover:bg-slate-700 flex items-center gap-2">
+                                        <i className="fas fa-history text-orange-300 w-4"></i> 還原版本快照
+                                    </button>
+
+                                    <button onClick={() => { runPlanHealthCheck(); setShowMoreMenu(false); }} className="px-4 py-2 text-left text-sm text-slate-200 hover:bg-slate-700 flex items-center gap-2">
+                                        <i className="fas fa-heartbeat text-rose-300 w-4"></i> 行程健康檢查
                                     </button>
 
                                     <div className="h-[1px] bg-slate-700 mx-2 my-1"></div>
