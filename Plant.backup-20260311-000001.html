@@ -5359,15 +5359,6 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                             {/* 工具整合選單：清單 / 分帳 / 預算 / 甘特 */}
                             <div className="relative shrink-0 flex flex-col items-start">
                                 <button
-                                    onClick={() => setShowUtilityMenu(v => !v)}
-                                    className={`group/day px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-bold transition-colors whitespace-nowrap flex items-center gap-1 sm:gap-1.5 border ${activeUtility ? `${activeUtility.activeCls} shadow` : 'bg-slate-50 text-slate-500 hover:bg-slate-100 border-slate-200'}`}
-                                >
-                                    <i className={`fas ${activeUtility ? activeUtility.icon : 'fa-grip-horizontal'}`}></i>
-                                    <span>{activeUtility ? activeUtility.label : '工具'}</span>
-                                    <i className="fas fa-chevron-down text-[10px] opacity-70"></i>
-                                </button>
-
-                                <button
                                     onClick={() => dispatch({
                                         type: PLAN_ACTIONS.ADD_DAY,
                                         payload: {
@@ -5379,6 +5370,15 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                 >
                                     <i className="fas fa-plus-circle"></i>
                                     <span>新增一天</span>
+                                </button>
+
+                                <button
+                                    onClick={() => setShowUtilityMenu(v => !v)}
+                                    className={`group/day mt-1 px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-bold transition-colors whitespace-nowrap flex items-center gap-1 sm:gap-1.5 border ${activeUtility ? `${activeUtility.activeCls} shadow` : 'bg-slate-50 text-slate-500 hover:bg-slate-100 border-slate-200'}`}
+                                >
+                                    <i className={`fas ${activeUtility ? activeUtility.icon : 'fa-grip-horizontal'}`}></i>
+                                    <span>{activeUtility ? activeUtility.label : '工具'}</span>
+                                    <i className="fas fa-chevron-down text-[10px] opacity-70"></i>
                                 </button>
 
                                 {showUtilityMenu && (
