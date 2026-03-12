@@ -7160,7 +7160,11 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                                                         {nodeExpense.expenses.map((exp, idx) => (
                                                                             <div key={exp.id || idx} className="text-[10px] text-slate-600 flex justify-between items-start">
                                                                                 <span className="flex-1">
-                                                                                    {exp.category && <span className="mr-1">{exp.category}</span>}
+                                                                                    {(() => {
+                                                                                        const categoryLabel = EXPENSE_CATEGORIES[exp.category] || exp.category || '其他';
+                                                                                        const itemLabel = exp.subCategory || categoryLabel;
+                                                                                        return <span className="mr-1">{itemLabel}</span>;
+                                                                                    })()}
                                                                                     {exp.note && <span className="italic">{exp.note}</span>}
                                                                                 </span>
                                                                                 <span className="font-semibold ml-2 shrink-0">{Number(exp.amount).toFixed(2)} {exp.currency || 'TWD'}</span>
