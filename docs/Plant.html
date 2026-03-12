@@ -1682,7 +1682,6 @@
                                         <i className="fas fa-map-pin text-3xl text-slate-300 mb-2"></i>
                                         <p className="text-slate-600 font-semibold">地圖上目前沒有任何標記</p>
                                         <p className="text-sm text-slate-500 mt-1">請在行程節點設定「緯度」與「經度」來顯示位置</p>
-                                    </div>
                                 </div>
                             )}
                             <div ref={mapRef} className="absolute inset-4 rounded-xl border border-slate-300 shadow-inner z-0"></div>
@@ -1964,7 +1963,6 @@
                                         >
                                             <i className="fas fa-times"></i>
                                         </button>
-                                    </div>
                                 </div>
                             ))}
                             
@@ -6626,14 +6624,14 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                         {!collapsedSections.currency && (<>
                                             <div className="flex flex-wrap items-center gap-2 mb-2">
                                                 <span className="text-[11px] text-emerald-600">基準幣別</span>
-                                            <select
+                                                <select
                                                 className="text-xs border border-emerald-200 rounded px-1.5 py-0.5 bg-white"
                                                 value={splitBaseCurrency}
                                                 onChange={(e) => setSplitBaseCurrency(e.target.value)}
                                             >
                                                 {currencyOptions.map(cur => <option key={cur} value={cur}>{cur}</option>)}
-                                            </select>
-                                        </div>
+                                                </select>
+                                            </div>
                                         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
                                             {currencyOptions.map(cur => (
                                                 <label key={cur} className="text-[11px] text-slate-600 bg-white border border-slate-200 rounded px-2 py-1">
@@ -6656,8 +6654,11 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
 
                                     {/* 預估 vs 實際差異報表 */}
                                     <div className="mb-6">
-                                        <h3 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-1.5"><i className="fas fa-scale-balanced text-indigo-500"></i> 預估 vs 實際差異報表 ({splitBaseCurrency})</h3>
-                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+                                        <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                                            <h3 className="text-sm font-bold text-slate-700 flex items-center gap-1.5"><i className="fas fa-scale-balanced text-indigo-500"></i> 預估 vs 實際差異報表 ({splitBaseCurrency})</h3>
+                                            <button onClick={() => toggleSection('variance')} className="text-xs font-medium px-2.5 py-1 rounded-full border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 md:hidden" title={collapsedSections.variance ? "展開" : "收折"}><i className={`fas fa-${collapsedSections.variance ? 'chevron-down' : 'chevron-up'}`}></i></button>
+                                        </div>
+                                        {!collapsedSections.variance && (<div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
                                             <div className="bg-white border border-slate-200 rounded-lg p-3">
                                                 <div className="text-[11px] text-slate-500">實際總額</div>
                                                 <div className="text-lg font-bold text-emerald-600">{statusTotals.actual.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
@@ -6698,9 +6699,14 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                         </div>
                                     </div>
 
-                                    {/* 結算總覽 */}
+                                        )}\n                                    </div>
                                     <div className="mb-6">
-                                        <h3 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-1.5"><i className="fas fa-chart-pie text-emerald-500"></i> 結算總覽 ({splitBaseCurrency})</h3>
+                                        )}\n                                    </div>
+                                                                                <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                                                                                    <h3 className="text-sm font-bold text-slate-700 flex items-center gap-1.5"><i className="fas fa-chart-pie text-emerald-500"></i> 結算總覽 ({splitBaseCurrency})</h3>
+                                                                                    <button onClick={() => toggleSection('settlement')} className="text-xs font-medium px-2.5 py-1 rounded-full border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 md:hidden" title={collapsedSections.settlement ? "展開" : "收折"}><i className={`fas fa-${collapsedSections.settlement ? 'chevron-down' : 'chevron-up'}`}></i></button>
+                                                                                </div>
+                                                                                {!collapsedSections.settlement && (
                                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                                             {summary.map(s => (
                                                 <div key={s.id} className="bg-slate-50 rounded-lg p-3 border">
@@ -6718,12 +6724,17 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                                     </div>
                                                 </div>
                                             ))}
-                                        </div>
-                                    </div>
+                                        </div>\n                                        )}\n                                    </div>
 
                                     {/* 分帳一鍵結清建議 */}
+
                                     <div className="mb-6">
-                                        <h3 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-1.5"><i className="fas fa-hand-holding-usd text-emerald-500"></i> 一鍵結清建議 ({splitBaseCurrency})</h3>
+                                        )}\n                                    </div>
+                                                                                <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                                                                                    <h3 className="text-sm font-bold text-slate-700 flex items-center gap-1.5"><i className="fas fa-hand-holding-usd text-emerald-500"></i> 一鍵結清建議 ({splitBaseCurrency})</h3>
+                                                                                    <button onClick={() => toggleSection('suggestions')} className="text-xs font-medium px-2.5 py-1 rounded-full border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 md:hidden" title={collapsedSections.suggestions ? "展開" : "收折"}><i className={`fas fa-${collapsedSections.suggestions ? 'chevron-down' : 'chevron-up'}`}></i></button>
+                                                                                </div>
+                                                                                {!collapsedSections.suggestions && (
                                         {settlementSuggestions.length === 0 ? (
                                             <div className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
                                                 目前帳務已接近平衡，暫無建議轉帳。
@@ -6750,7 +6761,7 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                         )}
                                     </div>
 
-                                    <div className="mb-6 bg-white border border-slate-200 rounded-xl overflow-hidden">
+                                    <div className="mb-6 bg-white border border-slate-200 rounded-xl overflow-hidden">\n                                    </div>
                                         <button
                                             onClick={() => setBudgetAnalysisExpanded(v => !v)}
                                             className="w-full px-4 py-3 flex items-center justify-between text-left bg-slate-50 hover:bg-slate-100 border-b border-slate-200"
@@ -7176,7 +7187,8 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                                 </tbody>
                                             </table>
                                         </div>
-                                        </>
+                                        </>)}
+                                    </div>
                                         )}
                                     </div>
                                     </>
