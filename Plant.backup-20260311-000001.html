@@ -6545,7 +6545,6 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                                 <i className="fas fa-plus-circle mr-1"></i>新增來源
                                             </button>
                                         </div>
-                                        {!paymentSourcesCollapsed && <>
                                         <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 mb-3">
                                             {PAYMENT_METHOD_OPTIONS.map((option) => (
                                                 <div key={`method-total-${option.value}`} className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
@@ -6554,6 +6553,7 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                                 </div>
                                             ))}
                                         </div>
+                                        {!paymentSourcesCollapsed && <>
                                         <div className="space-y-2">
                                             {paymentSources.map((source) => {
                                                 const usage = paymentSourceUsage[source.id] || { count: 0, amountInBase: 0, originalByCurrency: {}, usedNative: null, remainingNative: null };
