@@ -5250,7 +5250,7 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                     </button>
 
                     {/* 更多功能下拉選單 */}
-                    <div ref={moreMenuRef} className="relative">
+                    <div ref={moreMenuRef} className="relative flex">
                         <button 
                             onClick={() => { setShowMoreMenu(!showMoreMenu); setShowUtilityMenu(false); }} 
                             className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded text-xs sm:text-sm font-semibold shadow flex items-center gap-1 shrink-0 transition-colors ${showMoreMenu ? 'bg-slate-100 text-slate-800' : 'bg-slate-700 hover:bg-slate-600 text-white'}`}
