@@ -1626,11 +1626,20 @@
 
         // --- Checklist 相關抽離元件 (Phase 1 效能優化) ---
         const ChecklistCategory = React.memo(({ category, planId, dispatch }) => {
+            const [isExpanded, setIsExpanded] = useState(window.innerWidth >= 640); // 手機版預設收起
+            
             return (
                 <div className="break-inside-avoid bg-slate-50 rounded-lg p-5 border border-slate-200 shadow-sm relative group/cat">
                     <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-200">
                         <div className="flex items-center gap-2 w-full">
-                            <i className="fas fa-folder-open text-amber-600/70"></i>
+                            <button
+                                onClick={() => setIsExpanded(!isExpanded)}
+                                className="text-amber-600/70 hover:text-amber-700 transition-colors flex-shrink-0 sm:hidden"
+                                title={isExpanded ? "收起" : "展開"}
+                            >
+                                <i className={`fas ${isExpanded ? 'fa-chevron-down' : 'fa-chevron-right'}`}></i>
+                            </button>
+                            <i className="fas fa-folder-open text-amber-600/70 hidden sm:inline"></i>
                             <input 
                                 className="font-bold text-slate-800 bg-transparent border-b border-transparent hover:border-slate-300 focus:border-amber-400 focus:outline-none w-full"
                                 value={category.category}
@@ -1647,53 +1656,55 @@
                         </button>
                     </div>
 
-                    <div className="space-y-2.5">
-                        {category.items.map((item) => (
-                            <div key={item.id} className="flex items-start gap-3 group/item">
-                                {item.isNote ? (
-                                    <div className="mt-1 flex items-center justify-center w-4 h-4 shrink-0 text-amber-500">
-                                        <i className="fas fa-thumbtack text-[10px] transform -rotate-45"></i>
-                                    </div>
-                                ) : (
-                                    <input 
-                                        type="checkbox" 
-                                        className="mt-1 w-4 h-4 shrink-0 rounded border-slate-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
-                                        checked={item.isChecked}
-                                        onChange={(e) => dispatch({ type: PLAN_ACTIONS.UPDATE_CHECKLIST_ITEM, payload: { planId, categoryId: category.id, itemId: item.id, update: { isChecked: e.target.checked } } })}
+                    {isExpanded && (
+                        <div className="space-y-2.5">
+                            {category.items.map((item) => (
+                                <div key={item.id} className="flex items-start gap-3 group/item">
+                                    {item.isNote ? (
+                                        <div className="mt-1 flex items-center justify-center w-4 h-4 shrink-0 text-amber-500">
+                                            <i className="fas fa-thumbtack text-[10px] transform -rotate-45"></i>
+                                        </div>
+                                    ) : (
+                                        <input 
+                                            type="checkbox" 
+                                            className="mt-1 w-4 h-4 shrink-0 rounded border-slate-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
+                                            checked={item.isChecked}
+                                            onChange={(e) => dispatch({ type: PLAN_ACTIONS.UPDATE_CHECKLIST_ITEM, payload: { planId, categoryId: category.id, itemId: item.id, update: { isChecked: e.target.checked } } })}
+                                        />
+                                    )}
+                                    <AutoResizeTextarea
+                                        className={`flex-1 bg-transparent border-none focus:outline-none focus:bg-white px-1 py-0.5 rounded text-sm transition-colors ${item.isNote ? 'text-slate-800 font-semibold bg-amber-50/50' : item.isChecked ? 'text-slate-400 line-through' : 'text-slate-700'}`}
+                                        value={item.text}
+                                        onChange={(e) => dispatch({ type: PLAN_ACTIONS.UPDATE_CHECKLIST_ITEM, payload: { planId, categoryId: category.id, itemId: item.id, update: { text: e.target.value } } })}
+                                        placeholder={item.isNote ? "純文字備註/提醒..." : "輸入準備事項..."}
                                     />
-                                )}
-                                <AutoResizeTextarea
-                                    className={`flex-1 bg-transparent border-none focus:outline-none focus:bg-white px-1 py-0.5 rounded text-sm transition-colors ${item.isNote ? 'text-slate-800 font-semibold bg-amber-50/50' : item.isChecked ? 'text-slate-400 line-through' : 'text-slate-700'}`}
-                                    value={item.text}
-                                    onChange={(e) => dispatch({ type: PLAN_ACTIONS.UPDATE_CHECKLIST_ITEM, payload: { planId, categoryId: category.id, itemId: item.id, update: { text: e.target.value } } })}
-                                    placeholder={item.isNote ? "純文字備註/提醒..." : "輸入準備事項..."}
-                                />
-                                <div className="flex items-center opacity-0 group-hover/item:opacity-100 transition-opacity pt-0.5 shrink-0 pl-2">
-                                    <button 
-                                        onClick={() => dispatch({ type: PLAN_ACTIONS.UPDATE_CHECKLIST_ITEM, payload: { planId, categoryId: category.id, itemId: item.id, update: { isNote: !item.isNote } } })} 
-                                        className={`mr-3 text-xs ${item.isNote ? 'text-amber-600 hover:text-amber-800' : 'text-slate-400 hover:text-amber-600'}`}
-                                        title={item.isNote ? "切換為待辦狀態" : "切換為純文字備註"}
-                                    >
-                                        <i className={`fas ${item.isNote ? 'fa-check-square' : 'fa-sticky-note'}`}></i>
-                                    </button>
-                                    <button 
-                                        onClick={() => dispatch({ type: PLAN_ACTIONS.DELETE_CHECKLIST_ITEM, payload: { planId, categoryId: category.id, itemId: item.id } })} 
-                                        className="text-slate-300 hover:text-red-500"
-                                        title="刪除"
-                                    >
-                                        <i className="fas fa-times"></i>
-                                    </button>
+                                    <div className="flex items-center opacity-0 group-hover/item:opacity-100 transition-opacity pt-0.5 shrink-0 pl-2">
+                                        <button 
+                                            onClick={() => dispatch({ type: PLAN_ACTIONS.UPDATE_CHECKLIST_ITEM, payload: { planId, categoryId: category.id, itemId: item.id, update: { isNote: !item.isNote } } })} 
+                                            className={`mr-3 text-xs ${item.isNote ? 'text-amber-600 hover:text-amber-800' : 'text-slate-400 hover:text-amber-600'}`}
+                                            title={item.isNote ? "切換為待辦狀態" : "切換為純文字備註"}
+                                        >
+                                            <i className={`fas ${item.isNote ? 'fa-check-square' : 'fa-sticky-note'}`}></i>
+                                        </button>
+                                        <button 
+                                            onClick={() => dispatch({ type: PLAN_ACTIONS.DELETE_CHECKLIST_ITEM, payload: { planId, categoryId: category.id, itemId: item.id } })} 
+                                            className="text-slate-300 hover:text-red-500"
+                                            title="刪除"
+                                        >
+                                            <i className="fas fa-times"></i>
+                                        </button>
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
-                        
-                        <button 
-                            onClick={() => dispatch({ type: PLAN_ACTIONS.ADD_CHECKLIST_ITEM, payload: { planId, categoryId: category.id, text: "" } })} 
-                            className="text-xs text-amber-600 hover:text-amber-800 font-medium flex items-center gap-1.5 mt-3 pt-2 opacity-70 hover:opacity-100 transition-opacity"
-                        >
-                            <i className="fas fa-plus"></i> 新增勾記項目
-                        </button>
-                    </div>
+                            ))}
+                            
+                            <button 
+                                onClick={() => dispatch({ type: PLAN_ACTIONS.ADD_CHECKLIST_ITEM, payload: { planId, categoryId: category.id, text: "" } })} 
+                                className="text-xs text-amber-600 hover:text-amber-800 font-medium flex items-center gap-1.5 mt-3 pt-2 opacity-70 hover:opacity-100 transition-opacity"
+                            >
+                                <i className="fas fa-plus"></i> 新增勾記項目
+                            </button>
+                        </div>
+                    )}
                 </div>
             );
         });
