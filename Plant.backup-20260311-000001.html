@@ -6498,11 +6498,15 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-3">
                                             {paymentSources.map((source) => {
                                                 const usage = paymentSourceUsage[source.id] || { amountInBase: 0 };
+                                                const hasCashQuota = source.method === 'cash' && Number(source.initialAmount || 0) > 0;
+                                                const spentOverTotalText = source.currency
+                                                    ? `${source.currency} ${Number((usage.usedNative ?? 0) || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} / ${Number(source.initialAmount || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                                                    : `${Number((usage.usedNative ?? 0) || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} / ${Number(source.initialAmount || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
                                                 return (
                                                     <div key={`source-total-${source.id}`} className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
                                                         <div className="text-[11px] text-slate-500 truncate">{source.name || '未命名來源'}</div>
                                                         <div className="text-[10px] text-slate-400">{PAYMENT_METHOD_LABELS[source.method] || '其他方式'}</div>
-                                                        <div className="text-sm font-bold text-slate-700">{Number(usage.amountInBase || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                                                        <div className="text-sm font-bold text-slate-700">{hasCashQuota ? spentOverTotalText : Number(usage.amountInBase || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
                                                     </div>
                                                 );
                                             })}
@@ -6570,16 +6574,16 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                                                 <div className="font-semibold text-slate-700">{usage.count}</div>
                                                             </div>
                                                             <div className="bg-white border border-slate-200 rounded px-2 py-1">
-                                                                <div className="text-slate-500">折算 {splitBaseCurrency}</div>
-                                                                <div className="font-semibold text-slate-700">{Number(usage.amountInBase || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                                                                <div className="text-slate-500">{hasCashQuota ? '支出/總金額' : `折算 ${splitBaseCurrency}`}</div>
+                                                                <div className="font-semibold text-slate-700">{hasCashQuota ? spentOverTotalText : Number(usage.amountInBase || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
                                                             </div>
                                                             <div className="bg-white border border-slate-200 rounded px-2 py-1 col-span-2 lg:col-span-1">
                                                                 <div className="text-slate-500">原始支出</div>
                                                                 <div className="font-semibold text-slate-700 truncate">{originalText}</div>
                                                             </div>
                                                             <div className="bg-white border border-slate-200 rounded px-2 py-1">
-                                                                <div className="text-slate-500">{hasCashQuota ? '支出/總金額' : '剩餘可用'}</div>
-                                                                <div className="font-semibold text-slate-700">{hasCashQuota ? spentOverTotalText : (source.currency ? `${source.currency} ${Number((usage.remainingNative ?? source.initialAmount) || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}` : '-')}</div>
+                                                                <div className="text-slate-500">剩餘可用</div>
+                                                                <div className="font-semibold text-slate-700">{source.currency ? `${source.currency} ${Number((usage.remainingNative ?? source.initialAmount) || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}` : '-'}</div>
                                                             </div>
                                                         </div>
                                                     </div>
