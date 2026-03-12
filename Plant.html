@@ -4675,6 +4675,54 @@
                     });
                 }
                 container.appendChild(transferSection);
+
+                // --- 支付來源使用摘要 ---
+                const paymentSources = getPlanPaymentSources(plan);
+                if (paymentSources.length > 0) {
+                    const sourceSection = document.createElement('div');
+                    sourceSection.style.cssText = 'margin-top:16px;';
+                    const sourceTitle = document.createElement('div');
+                    sourceTitle.style.cssText = 'font-size:13px;font-weight:700;color:#334155;margin-bottom:8px;border-top:1px solid #e2e8f0;padding-top:12px;';
+                    sourceTitle.textContent = '支付來源 / 工具使用摘要';
+                    sourceSection.appendChild(sourceTitle);
+
+                    const sourceGrid = document.createElement('div');
+                    sourceGrid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;';
+                    paymentSources.forEach(source => {
+                        const relatedEntries = allEntries.filter(it => {
+                            const enriched = harmonizeExpensePaymentFields(it, paymentSources);
+                            return enriched.paymentSourceId === source.id;
+                        });
+                        const amountInBase = relatedEntries.reduce((sum, it) => {
+                            return sum + convertCurrencyAmount(Number(it.amount || 0), it.currency || 'TWD', baseCurrency, rates);
+                        }, 0);
+                        const origByCurrency = relatedEntries.reduce((acc, it) => {
+                            const cur = it.currency || 'TWD';
+                            acc[cur] = (acc[cur] || 0) + Number(it.amount || 0);
+                            return acc;
+                        }, {});
+                        const origText = Object.entries(origByCurrency).length === 0
+                            ? '尚未使用'
+                            : Object.entries(origByCurrency).map(([cur, amt]) => `${cur} ${Number(amt).toLocaleString(undefined, { maximumFractionDigits: 0 })}`).join(' / ');
+                        const remaining = source.currency
+                            ? Math.max(0, Number(source.initialAmount || 0) - Number(origByCurrency[source.currency] || 0))
+                            : null;
+
+                        const card = document.createElement('div');
+                        card.style.cssText = 'border:1px solid #e2e8f0;border-radius:8px;padding:10px;background:#f8fafc;';
+                        card.innerHTML = `
+                            <div style="font-size:13px;font-weight:700;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${source.name || '未命名來源'}</div>
+                            <div style="font-size:11px;color:#64748b;margin-top:2px;">${PAYMENT_METHOD_LABELS[source.method] || '其他方式'}</div>
+                            <div style="font-size:11px;color:#64748b;">原始：${origText}</div>
+                            <div style="font-size:12px;font-weight:700;color:#0284c7;margin-top:4px;">折算 ${baseCurrency}：${Number(amountInBase).toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                            ${remaining !== null ? `<div style="font-size:11px;color:#64748b;">剩餘：${source.currency} ${Number(remaining).toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>` : ''}
+                        `;
+                        sourceGrid.appendChild(card);
+                    });
+                    sourceSection.appendChild(sourceGrid);
+                    container.appendChild(sourceSection);
+                }
+
                 return container;
             };
 
