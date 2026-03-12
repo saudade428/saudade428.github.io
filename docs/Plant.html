@@ -7018,7 +7018,7 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                     )}
                     
                     {/* 開銷明細抽屜 */}
-                    {showExpenseDrawer && activePlan && (
+                    {showExpenseDrawer && (
                         <div className="fixed inset-0 z-[1300] bg-slate-900/80 backdrop-blur-sm overflow-y-auto pb-20">
                             <div className="sticky top-0 bg-slate-900/90 shadow p-4 flex justify-between items-center z-[1310] border-b border-slate-700">
                                 <h2 className="text-xl font-bold text-white flex items-center gap-2">
@@ -7030,7 +7030,11 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                 </button>
                             </div>
                             <div className="p-6">
-                                {(() => {
+                                {!activePlan ? (
+                                    <div className="text-center text-slate-400 font-medium py-20">
+                                        沒有選中的方案
+                                    </div>
+                                ) : (() => {
                                     try {
                                         // 計算方案的所有開銷
                                         const allExpenses = activePlan.days.flatMap(day => 
