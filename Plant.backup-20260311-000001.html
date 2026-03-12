@@ -2920,7 +2920,6 @@
 
         // --- 主應用程式元件 ---
         const App = () => {
-            console.log('[App Init] React App is starting up...');
             const [data, _dispatchRaw] = useReducer(planReducer, null, () => {
                 try {
                     const saved = localStorage.getItem('travelPlanData');
@@ -3240,9 +3239,7 @@
                     const coarsePointer = typeof window !== 'undefined'
                         && window.matchMedia
                         && window.matchMedia('(hover: none), (pointer: coarse)').matches;
-                    const shouldDisable = Boolean(coarsePointer || window.innerWidth < 640);
-                    console.log('[Tooltip] Init/Update:', { coarsePointer, windowWidth: window.innerWidth, shouldDisable });
-                    setDisableHoverTooltip(shouldDisable);
+                    setDisableHoverTooltip(Boolean(coarsePointer || window.innerWidth < 640));
                 };
 
                 updateTooltipCapability();
@@ -3283,10 +3280,6 @@
             useEffect(() => {
                 setMobilePreviewDayId(null);
             }, [activeDayId, activePlanId]);
-
-            useEffect(() => {
-                console.log('[MobilePreview] State changed:', { mobilePreviewDayId, disableHoverTooltip, activePlanId });
-            }, [mobilePreviewDayId, disableHoverTooltip]);
 
             useEffect(() => {
                 const updateHeaderOffset = () => {
@@ -3342,6 +3335,19 @@
                 setActivePlanId(planId);
                 setActiveDayId('checklist');
             };
+
+            const createPlan = useCallback(() => {
+                const newPlan = { id: generateId(), name: `方案 ${data.plans.length + 1}`, companions: [], days: [], checklists: [] };
+                dispatch({ type: PLAN_ACTIONS.ADD_PLAN, payload: { plan: newPlan } });
+                switchPlan(newPlan.id);
+            }, [data.plans.length, dispatch]);
+
+            const deletePlanById = useCallback((planId) => {
+                if (data.plans.length <= 1) return;
+                if (window.confirm('確定要刪除這個方案嗎？')) {
+                    dispatch({ type: PLAN_ACTIONS.DELETE_PLAN, payload: { planId } });
+                }
+            }, [data.plans.length, dispatch]);
 
             const quickCreatePlan = useCallback(() => {
                 const defaultName = `方案 ${data.plans.length + 1}`;
@@ -5106,11 +5112,9 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                         <button
                                             onClick={(e) => {
                                                 e.stopPropagation();
-                                                if (window.confirm("確定要刪除這個方案嗎？")) {
-                                                    dispatch({ type: PLAN_ACTIONS.DELETE_PLAN, payload: { planId: plan.id } });
-                                                }
+                                                deletePlanById(plan.id);
                                             }}
-                                            className="text-slate-400 hover:text-red-500 transition-colors"
+                                            className="hidden sm:inline-flex text-slate-400 hover:text-red-500 transition-colors"
                                             title="刪除方案"
                                         >
                                             <i className="fas fa-trash-alt text-[10px]"></i>
@@ -5139,12 +5143,8 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                         </div>
                     ))}
                     <button
-                        onClick={() => {
-                            const newPlan = { id: generateId(), name: `方案 ${data.plans.length + 1}`, companions: [], days: [], checklists: [] };
-                            dispatch({ type: PLAN_ACTIONS.ADD_PLAN, payload: { plan: newPlan } });
-                            switchPlan(newPlan.id);
-                        }}
-                        className="px-2 py-0.5 text-xs text-blue-200 hover:text-white bg-slate-700/60 hover:bg-slate-600 border border-slate-600 rounded-lg flex items-center gap-1 whitespace-nowrap"
+                        onClick={createPlan}
+                        className="hidden sm:inline-flex px-2 py-0.5 text-xs text-blue-200 hover:text-white bg-slate-700/60 hover:bg-slate-600 border border-slate-600 rounded-lg items-center gap-1 whitespace-nowrap"
                     >
                         <i className="fas fa-plus"></i> 新增方案
                     </button>
@@ -5311,6 +5311,26 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                     {activePlan && (
                         <div ref={dayTabsRef} className={`px-2 sm:px-6 py-1.5 sm:py-2 pb-2 sm:pb-3 mb-2 flex gap-1.5 sm:gap-2 items-center sticky z-[980] overflow-visible transition-all ${isPageScrolled ? 'bg-white/96 backdrop-blur-md border-b border-slate-300 shadow-lg' : 'bg-white border-b border-slate-200 shadow-sm'}`}
                             style={{ top: `${stickyTopOffset}px` }}>
+                            <div className="sm:hidden flex items-center gap-1 shrink-0">
+                                <button
+                                    onClick={createPlan}
+                                    className="h-8 w-8 inline-flex items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                                    title="新增方案"
+                                >
+                                    <i className="fas fa-plus text-[11px]"></i>
+                                </button>
+                                {data.plans.length > 1 && (
+                                    <button
+                                        onClick={() => deletePlanById(activePlan.id)}
+                                        className="h-8 w-8 inline-flex items-center justify-center rounded-full border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 hover:text-rose-700 transition-colors"
+                                        title="刪除目前方案"
+                                    >
+                                        <i className="fas fa-trash-alt text-[11px]"></i>
+                                    </button>
+                                )}
+                            </div>
+                            <div className="sm:hidden w-[1px] h-5 bg-slate-300 shrink-0"></div>
+
                             {/* 工具整合選單：清單 / 分帳 / 預算 / 甘特 */}
                             <div className="relative shrink-0">
                                 <button
@@ -5345,7 +5365,6 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                             <div className="flex gap-1.5 sm:gap-2 overflow-x-auto hide-scrollbar items-start min-w-0 flex-1 pb-0.5">
 
                             {activePlan.days.map((day, idx) => {
-                                console.log('[DAY MAP] Rendering day:', day.id, day.title, { disableHoverTooltip });
                                 return (
                                 <div 
                                     key={day.id} 
@@ -5359,7 +5378,6 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                         {disableHoverTooltip && (
                                             <button
                                                 onClick={() => {
-                                                    console.log('[DAY INFO BTN] Clicked! Setting mobilePreviewDayId to:', day.id);
                                                     if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
                                                     setHoveredDay(null);
                                                     setMobilePreviewDayId(day.id);
@@ -7072,13 +7090,10 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                     {/* 手機 Day 摘要抽屜 */}
                     {(() => {
                         if (disableHoverTooltip && activePlan && mobilePreviewDayId) {
-                            console.log('[OUTER] Mobile preview conditions:', { disableHoverTooltip, activePlanId: activePlan?.id, mobilePreviewDayId });
                             const mobileDay = activePlan.days.find(d => d.id === mobilePreviewDayId);
                             if (!mobileDay) {
-                                console.warn('[OUTER] Day not found:', mobilePreviewDayId);
                                 return null;
                             }
-                            console.log('[OUTER] Rendering mobile day sheet for:', mobileDay.title);
                             return (
                             <div className="fixed inset-0 z-[9998] sm:hidden">
                                 <div className="absolute inset-0 bg-black/35" onClick={() => setMobilePreviewDayId(null)}></div>
@@ -7127,7 +7142,6 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                                 });
                                                 
                                                 const hasExpenses = Object.keys(totalByCurrency).length > 0;
-                                                console.log('Mobile Day Expense:', { dayId: mobileDay.id, totalByCurrency, nodeCount: nodes.length, hasExpenses });
                                                 
                                                 if (hasExpenses) {
                                                     return (
@@ -7178,7 +7192,6 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                                 }
                                                 return null;
                                             } catch (err) {
-                                                console.error('Mobile day expense calculation error:', err);
                                                 return null;
                                             }
                                         })()}
