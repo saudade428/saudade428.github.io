@@ -5366,7 +5366,7 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                             day: { id: generateId(), title: `Day ${activePlan.days.length + 1}`, subtitle: '', journal: '', weather: { condition: '', tempHigh: '', tempLow: '' }, nodes: [], memos: [] }
                                         }
                                     })}
-                                    className="sm:hidden mt-1 px-2.5 py-1 text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-full text-[11px] font-semibold flex items-center gap-1"
+                                    className="mt-1 px-2.5 sm:px-3 py-1 sm:py-1.5 text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-full text-[11px] sm:text-xs font-semibold flex items-center gap-1 whitespace-nowrap"
                                 >
                                     <i className="fas fa-plus-circle"></i>
                                     <span>新增一天</span>
@@ -5481,18 +5481,7 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                             );
                             })}
 
-                            <button 
-                                onClick={() => dispatch({ 
-                                    type: PLAN_ACTIONS.ADD_DAY, 
-                                    payload: { 
-                                        planId: activePlan.id, 
-                                        day: { id: generateId(), title: `Day ${activePlan.days.length + 1}`, subtitle: '', journal: '', weather: { condition: '', tempHigh: '', tempLow: '' }, nodes: [], memos: [] } 
-                                    } 
-                                })} 
-                                className="hidden sm:flex px-3 py-1.5 text-blue-500 hover:text-blue-700 text-sm items-center gap-1 font-medium whitespace-nowrap ml-2"
-                            >
-                                <i className="fas fa-plus-circle"></i> 新增一天
-                            </button>
+                            
                             </div>
                         </div>
                     )}
