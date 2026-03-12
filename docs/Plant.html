@@ -263,6 +263,9 @@
             RENAME_COMPANION: 'RENAME_COMPANION',
             TOGGLE_COMPANION_CATEGORY_RULE: 'TOGGLE_COMPANION_CATEGORY_RULE',
             TOGGLE_COMPANION_RULE_AUTO_APPLY: 'TOGGLE_COMPANION_RULE_AUTO_APPLY',
+            ADD_PAYMENT_SOURCE: 'ADD_PAYMENT_SOURCE',
+            UPDATE_PAYMENT_SOURCE: 'UPDATE_PAYMENT_SOURCE',
+            DELETE_PAYMENT_SOURCE: 'DELETE_PAYMENT_SOURCE',
             UPDATE_NODE_PAID_BY: 'UPDATE_NODE_PAID_BY',
             TOGGLE_NODE_SPLIT_AMONG: 'TOGGLE_NODE_SPLIT_AMONG',
             UPDATE_PAYMENT_STATUS: 'UPDATE_PAYMENT_STATUS',
@@ -289,7 +292,7 @@
 
             switch (type) {
                 case PLAN_ACTIONS.SET_DATA:
-                    return ensureChecklistFinancialEssentials(payload);
+                    return normalizeStoredData(payload);
                 
                 case PLAN_ACTIONS.UPDATE_NODE_TITLE:
                     return updateNode(payload.planId, payload.dayId, payload.nodeId, n => {
@@ -327,6 +330,8 @@
 
                 case PLAN_ACTIONS.UPDATE_COST:
                     return updateNode(payload.planId, payload.dayId, payload.nodeId, n => {
+                        const plan = state.plans.find(p => p.id === payload.planId);
+                        const paymentSources = getPlanPaymentSources(plan);
                         const amount = Number(payload.value || 0);
                         const items = normalizeExpenseItems(n);
                         if (items.length === 0) {
@@ -339,17 +344,20 @@
                                 paidBy: n.paidBy || '',
                                 splitAmong: Array.isArray(n.splitAmong) ? n.splitAmong : [],
                                 expenseStatus: 'actual',
-                                paymentStatus: n.paymentStatus || 'cash'
+                                paymentMethod: getNormalizedPaymentMethod(n.paymentMethod, n.paymentStatus || 'cash'),
+                                paymentSourceId: pickDefaultPaymentSourceId(paymentSources, getNormalizedPaymentMethod(n.paymentMethod, n.paymentStatus || 'cash'), n.currency || 'TWD'),
+                                paymentStatus: getLegacyPaymentStatusFromMethod(getNormalizedPaymentMethod(n.paymentMethod, n.paymentStatus || 'cash'))
                             }] : [];
                             return syncLegacyExpenseFields({ ...n, cost: amount }, defaultItem);
                         }
                         const next = items.map((it, idx) => idx === 0 ? { ...it, amount } : it);
-                        return syncLegacyExpenseFields({ ...n, cost: amount }, next);
+                        return syncLegacyExpenseFields({ ...n, cost: amount }, next.map(item => harmonizeExpensePaymentFields(item, paymentSources)));
                     });
 
                 case PLAN_ACTIONS.ADD_NODE_EXPENSE_ITEM:
                     return updateNode(payload.planId, payload.dayId, payload.nodeId, n => {
                         const plan = state.plans.find(p => p.id === payload.planId);
+                        const paymentSources = getPlanPaymentSources(plan);
                         const newExpense = applyCategoryRuleToExpenseItem({
                             id: generateId(),
                             currency: payload.currency || n.currency || 'TWD',
@@ -360,11 +368,13 @@
                             paidBy: '',
                             splitAmong: [],
                             expenseStatus: 'actual',
+                            paymentMethod: 'cash',
+                            paymentSourceId: pickDefaultPaymentSourceId(paymentSources, 'cash', payload.currency || n.currency || 'TWD'),
                             paymentStatus: 'cash'
                         }, plan, { force: true });
                         const next = [
                             ...normalizeExpenseItems(n),
-                            newExpense
+                            harmonizeExpensePaymentFields(newExpense, paymentSources)
                         ];
                         return syncLegacyExpenseFields(n, next);
                     });
@@ -373,18 +383,25 @@
                     return updateNode(payload.planId, payload.dayId, payload.nodeId, n => {
                         const plan = state.plans.find(p => p.id === payload.planId);
                         const rules = getPlanCompanionRules(plan);
+                        const paymentSources = getPlanPaymentSources(plan);
                         const next = normalizeExpenseItems(n).map(it => {
                             if (it.id !== payload.expenseId) return it;
                             const nextValue = payload.field === 'amount'
                                 ? Math.max(0, Number(payload.value || 0))
                                 : payload.field === 'subCategory'
                                     ? String(payload.value || '')
-                                : payload.value;
+                                    : payload.field === 'paymentSourceId'
+                                        ? String(payload.value || '')
+                                        : payload.value;
                             let updated = { ...it, [payload.field]: nextValue };
+                            if (payload.field === 'paymentMethod') {
+                                updated.paymentMethod = getNormalizedPaymentMethod(nextValue, updated.paymentStatus || 'cash');
+                                updated.paymentSourceId = pickDefaultPaymentSourceId(paymentSources, updated.paymentMethod, updated.currency || 'TWD');
+                            }
                             if (payload.field === 'category' && rules.autoApplyOnCategoryChange) {
                                 updated = applyCategoryRuleToExpenseItem(updated, plan, { force: false });
                             }
-                            return updated;
+                            return harmonizeExpensePaymentFields(updated, paymentSources);
                         });
                         return syncLegacyExpenseFields(n, next);
                     });
@@ -671,6 +688,60 @@
                             autoApplyOnCategoryChange: payload.value
                         }
                     }));
+                case PLAN_ACTIONS.ADD_PAYMENT_SOURCE:
+                    return updatePlan(payload.planId, p => ({
+                        ...p,
+                        paymentSources: [
+                            ...getPlanPaymentSources(p),
+                            normalizePaymentSource(payload.source || {
+                                name: `支付來源 ${(getPlanPaymentSources(p).length || 0) + 1}`,
+                                method: 'cash',
+                                currency: 'TWD',
+                                initialAmount: 0,
+                                note: ''
+                            }, getPlanPaymentSources(p).length)
+                        ]
+                    }));
+                case PLAN_ACTIONS.UPDATE_PAYMENT_SOURCE:
+                    return updatePlan(payload.planId, p => {
+                        const currentSources = getPlanPaymentSources(p);
+                        const nextSources = currentSources.map((source, index) => {
+                            if (source.id !== payload.sourceId) return source;
+                            const patch = payload.field === 'initialAmount'
+                                ? { [payload.field]: Math.max(0, Number(payload.value || 0)) }
+                                : { [payload.field]: payload.value };
+                            return normalizePaymentSource({ ...source, ...patch }, index);
+                        });
+                        return {
+                            ...p,
+                            paymentSources: nextSources,
+                            days: p.days.map(day => ({
+                                ...day,
+                                nodes: day.nodes.map(node => syncLegacyExpenseFields(node, normalizeExpenseItems(node).map(item => harmonizeExpensePaymentFields(item, nextSources))))
+                            }))
+                        };
+                    });
+                case PLAN_ACTIONS.DELETE_PAYMENT_SOURCE:
+                    return updatePlan(payload.planId, p => {
+                        const filteredSources = getPlanPaymentSources(p).filter(source => source.id !== payload.sourceId);
+                        const nextSources = filteredSources.length > 0 ? filteredSources : createDefaultPaymentSources();
+                        return {
+                            ...p,
+                            paymentSources: nextSources,
+                            days: p.days.map(day => ({
+                                ...day,
+                                nodes: day.nodes.map(node => {
+                                    const nextItems = normalizeExpenseItems(node).map(item => {
+                                        const cleared = item.paymentSourceId === payload.sourceId
+                                            ? { ...item, paymentSourceId: '' }
+                                            : item;
+                                        return harmonizeExpensePaymentFields(cleared, nextSources);
+                                    });
+                                    return syncLegacyExpenseFields(node, nextItems);
+                                })
+                            }))
+                        };
+                    });
                 case PLAN_ACTIONS.UPDATE_NODE_PAID_BY:
                     return updateNode(payload.planId, payload.dayId, payload.nodeId, n => {
                         const items = normalizeExpenseItems(n);
@@ -691,10 +762,26 @@
                     });
                 case PLAN_ACTIONS.UPDATE_PAYMENT_STATUS:
                     return updateNode(payload.planId, payload.dayId, payload.nodeId, n => {
+                        const plan = state.plans.find(p => p.id === payload.planId);
+                        const paymentSources = getPlanPaymentSources(plan);
                         const items = normalizeExpenseItems(n);
-                        if (items.length === 0) return { ...n, paymentStatus: payload.status };
-                        const next = items.map((it, idx) => idx === 0 ? { ...it, paymentStatus: payload.status } : it);
-                        return syncLegacyExpenseFields({ ...n, paymentStatus: payload.status }, next);
+                        const paymentMethod = payload.status === 'sunk' ? 'card' : 'cash';
+                        if (items.length === 0) {
+                            return {
+                                ...n,
+                                paymentMethod,
+                                paymentStatus: getLegacyPaymentStatusFromMethod(paymentMethod),
+                                paymentSourceId: pickDefaultPaymentSourceId(paymentSources, paymentMethod, n.currency || 'TWD')
+                            };
+                        }
+                        const next = items.map((it, idx) => idx === 0
+                            ? harmonizeExpensePaymentFields({
+                                ...it,
+                                paymentMethod,
+                                paymentSourceId: pickDefaultPaymentSourceId(paymentSources, paymentMethod, it.currency || 'TWD')
+                            }, paymentSources)
+                            : it);
+                        return syncLegacyExpenseFields({ ...n, paymentStatus: getLegacyPaymentStatusFromMethod(paymentMethod), paymentMethod }, next);
                     });
                 case PLAN_ACTIONS.SWAP_DAYS: {
                     const plan = state.plans.find(p => p.id === payload.planId);
@@ -773,6 +860,136 @@
             actual: '實際',
             estimated: '預估'
         };
+
+        const PAYMENT_METHOD_OPTIONS = [
+            { value: 'cash', label: '現金 / 自備現鈔' },
+            { value: 'card', label: '信用卡' },
+            { value: 'ewallet', label: '電子支付' },
+            { value: 'bank', label: '轉帳 / 帳戶' },
+            { value: 'other', label: '其他方式' }
+        ];
+
+        const PAYMENT_METHOD_LABELS = PAYMENT_METHOD_OPTIONS.reduce((acc, option) => {
+            acc[option.value] = option.label;
+            return acc;
+        }, {});
+
+        function getNormalizedPaymentMethod(method, paymentStatus = 'cash') {
+            const candidate = String(method || '').trim();
+            if (PAYMENT_METHOD_OPTIONS.some(option => option.value === candidate)) {
+                return candidate;
+            }
+            return paymentStatus === 'sunk' ? 'card' : 'cash';
+        }
+
+        function getLegacyPaymentStatusFromMethod(method) {
+            return getNormalizedPaymentMethod(method) === 'cash' ? 'cash' : 'sunk';
+        }
+
+        function createDefaultPaymentSources() {
+            return [
+                { id: generateId(), name: '自備日幣現鈔', method: 'cash', currency: 'JPY', initialAmount: 100000, note: '' },
+                { id: generateId(), name: '台幣現金', method: 'cash', currency: 'TWD', initialAmount: 0, note: '' },
+                { id: generateId(), name: '信用卡', method: 'card', currency: '', initialAmount: 0, note: '' },
+                { id: generateId(), name: '電子支付', method: 'ewallet', currency: '', initialAmount: 0, note: '' }
+            ];
+        }
+
+        function normalizePaymentSource(source, index = 0) {
+            const method = getNormalizedPaymentMethod(source?.method, source?.paymentStatus || 'cash');
+            return {
+                id: String(source?.id || generateId()),
+                name: String(source?.name || source?.label || `支付來源 ${index + 1}`),
+                method,
+                currency: method === 'cash' ? String(source?.currency || 'TWD') : '',
+                initialAmount: Math.max(0, Number(source?.initialAmount ?? source?.amount ?? 0)),
+                note: String(source?.note || '')
+            };
+        }
+
+        function getPlanPaymentSources(plan) {
+            const rawSources = Array.isArray(plan?.paymentSources) && plan.paymentSources.length
+                ? plan.paymentSources
+                : createDefaultPaymentSources();
+            const seenIds = new Set();
+            return rawSources.map((source, index) => {
+                const normalized = normalizePaymentSource(source, index);
+                let nextId = normalized.id;
+                while (seenIds.has(nextId)) {
+                    nextId = generateId();
+                }
+                seenIds.add(nextId);
+                return { ...normalized, id: nextId };
+            });
+        }
+
+        function pickDefaultPaymentSourceId(paymentSources, paymentMethod = 'cash', currency = 'TWD') {
+            const method = getNormalizedPaymentMethod(paymentMethod);
+            const sources = Array.isArray(paymentSources) ? paymentSources : [];
+            const exactMatch = sources.find(source => source.method === method && (method !== 'cash' || !source.currency || source.currency === currency));
+            if (exactMatch) return exactMatch.id;
+            const sameMethod = sources.find(source => source.method === method);
+            if (sameMethod) return sameMethod.id;
+            const sameCurrencyCash = sources.find(source => source.method === 'cash' && source.currency === currency);
+            if (sameCurrencyCash) return sameCurrencyCash.id;
+            return sources[0]?.id || '';
+        }
+
+        function harmonizeExpensePaymentFields(expenseItem, paymentSources) {
+            const currency = String(expenseItem?.currency || 'TWD');
+            let method = getNormalizedPaymentMethod(expenseItem?.paymentMethod, expenseItem?.paymentStatus || 'cash');
+            let sourceId = String(expenseItem?.paymentSourceId || '');
+            let source = (paymentSources || []).find(item => item.id === sourceId) || null;
+
+            if (source) {
+                method = getNormalizedPaymentMethod(source.method, method);
+                if (method === 'cash' && source.currency && source.currency !== currency) {
+                    source = null;
+                    sourceId = '';
+                }
+            }
+
+            if (!sourceId) {
+                sourceId = pickDefaultPaymentSourceId(paymentSources, method, currency);
+                source = (paymentSources || []).find(item => item.id === sourceId) || null;
+            }
+
+            if (source) {
+                method = getNormalizedPaymentMethod(source.method, method);
+            }
+
+            return {
+                ...expenseItem,
+                paymentMethod: method,
+                paymentSourceId: sourceId || '',
+                paymentStatus: getLegacyPaymentStatusFromMethod(method)
+            };
+        }
+
+        function ensurePlanPaymentData(rawData) {
+            if (!rawData || !Array.isArray(rawData.plans)) return rawData;
+            return {
+                ...rawData,
+                plans: rawData.plans.map((plan) => {
+                    const paymentSources = getPlanPaymentSources(plan);
+                    return {
+                        ...plan,
+                        paymentSources,
+                        days: Array.isArray(plan.days) ? plan.days.map((day) => ({
+                            ...day,
+                            nodes: Array.isArray(day.nodes) ? day.nodes.map((node) => {
+                                const items = normalizeExpenseItems(node).map((item) => harmonizeExpensePaymentFields(item, paymentSources));
+                                return syncLegacyExpenseFields(node, items);
+                            }) : []
+                        })) : []
+                    };
+                })
+            };
+        }
+
+        function normalizeStoredData(rawData) {
+            return ensurePlanPaymentData(ensureChecklistFinancialEssentials(rawData));
+        }
 
         const createDefaultCompanionRuleMap = () => Object.keys(EXPENSE_CATEGORIES).reduce((acc, key) => {
             acc[key] = [];
@@ -902,12 +1119,15 @@
                     paidBy: it.paidBy || '',
                     splitAmong: Array.isArray(it.splitAmong) ? it.splitAmong : [],
                     expenseStatus: it.expenseStatus === 'estimated' ? 'estimated' : 'actual',
-                    paymentStatus: it.paymentStatus || node.paymentStatus || 'cash'
+                    paymentMethod: getNormalizedPaymentMethod(it.paymentMethod, it.paymentStatus || node.paymentStatus || 'cash'),
+                    paymentSourceId: typeof it.paymentSourceId === 'string' ? it.paymentSourceId : '',
+                    paymentStatus: getLegacyPaymentStatusFromMethod(getNormalizedPaymentMethod(it.paymentMethod, it.paymentStatus || node.paymentStatus || 'cash'))
                 })));
             }
 
             const amount = Number(node?.cost || 0);
             if (!amount) return [];
+            const paymentMethod = getNormalizedPaymentMethod(node?.paymentMethod, node?.paymentStatus || 'cash');
             return ensureUniqueIds([
                 {
                     id: `${nodeSeed}-default-expense`,
@@ -919,7 +1139,9 @@
                     paidBy: node?.paidBy || '',
                     splitAmong: Array.isArray(node?.splitAmong) ? node.splitAmong : [],
                     expenseStatus: 'actual',
-                    paymentStatus: node?.paymentStatus || 'cash'
+                    paymentMethod,
+                    paymentSourceId: typeof node?.paymentSourceId === 'string' ? node.paymentSourceId : '',
+                    paymentStatus: getLegacyPaymentStatusFromMethod(paymentMethod)
                 }
             ]);
         };
@@ -928,6 +1150,7 @@
             const items = expenseItems || normalizeExpenseItems(node);
             const first = items[0];
             const total = items.reduce((sum, it) => sum + Number(it.amount || 0), 0);
+            const paymentMethod = first?.paymentMethod || getNormalizedPaymentMethod(node?.paymentMethod, node?.paymentStatus || 'cash');
             return {
                 ...node,
                 expenseItems: items,
@@ -935,7 +1158,9 @@
                 currency: first?.currency || node.currency || 'TWD',
                 paidBy: first?.paidBy || node.paidBy || '',
                 splitAmong: Array.isArray(first?.splitAmong) ? first.splitAmong : (node.splitAmong || []),
-                paymentStatus: first?.paymentStatus || node.paymentStatus || 'cash'
+                paymentMethod,
+                paymentSourceId: first?.paymentSourceId || node.paymentSourceId || '',
+                paymentStatus: first?.paymentStatus || getLegacyPaymentStatusFromMethod(paymentMethod)
             };
         };
 
@@ -1866,7 +2091,7 @@
 
         const NodeItem = React.memo(({
             node, dayId, planId, nodeIndex, isDragging, isDragOverTop, isDragOverBottom,
-            activePlanLength, otherDays, currentMemos, collapsedNodes, dayNodes, dispatch,
+            activePlanLength, otherDays, currentMemos, collapsedNodes, dayNodes, planPaymentSources, dispatch,
             onDragStart, onDragOver, onDragLeave, onDrop, onDragEnd, onAddLocation, onToggleCollapse
         }) => {
             const nodeStyle = NODE_STYLES[node.type] || DEFAULT_NODE_STYLE;
@@ -1874,10 +2099,6 @@
             const expenseItems = normalizeExpenseItems(node);
             const expenseByCurrency = getNodeExpenseByCurrency(node);
             const expenseCurrencyEntries = Object.entries(expenseByCurrency);
-            const primaryExpense = expenseItems[0] || {
-                currency: node.currency || 'TWD',
-                paymentStatus: node.paymentStatus || 'cash'
-            };
             const subtaskCount = (node.subtasks || []).length;
             const childCount = (node.children || []).length;
             const hasExpenseData = expenseItems.length > 0;
@@ -1891,6 +2112,12 @@
             const expenseSummaryText = hasExpenseData
                 ? `${expenseItems.length} 筆 · ${Object.entries(expenseByCurrency).map(([cur, amount]) => `${cur} ${Number(amount).toLocaleString()}`).join(' / ')}`
                 : '尚未新增';
+            const paymentSourcePreview = expenseItems.reduce((acc, item) => {
+                const source = (planPaymentSources || []).find(entry => entry.id === item.paymentSourceId);
+                const key = source?.name || PAYMENT_METHOD_LABELS[item.paymentMethod] || '未指定';
+                if (!acc.includes(key)) acc.push(key);
+                return acc;
+            }, []);
             const subtaskDoneCount = (node.subtasks || []).filter(s => s?.isCompleted).length;
             const subtaskSummaryText = hasSubtaskData ? `${subtaskDoneCount}/${subtaskCount} 完成` : '尚未新增';
             const childSummaryText = hasChildData ? `${childCount} 個子方案` : '尚未新增';
@@ -2535,6 +2762,31 @@
                                                         <option value="actual">實際</option>
                                                         <option value="estimated">預估</option>
                                                     </select>
+                                                    <select
+                                                        className="text-[10px] bg-white border border-slate-200 rounded py-0.5 px-1 focus:ring-0"
+                                                        value={item.paymentMethod || 'cash'}
+                                                        onChange={(e) => dispatch({ type: PLAN_ACTIONS.UPDATE_NODE_EXPENSE_ITEM, payload: { planId, dayId, nodeId: node.id, expenseId: item.id, field: 'paymentMethod', value: e.target.value } })}
+                                                        title="支付方式"
+                                                    >
+                                                        {PAYMENT_METHOD_OPTIONS.map((option) => (
+                                                            <option key={`${item.id}-${option.value}`} value={option.value}>{option.label}</option>
+                                                        ))}
+                                                    </select>
+                                                    <select
+                                                        className="text-[10px] bg-white border border-slate-200 rounded py-0.5 px-1 min-w-[110px] focus:ring-0"
+                                                        value={item.paymentSourceId || ''}
+                                                        onChange={(e) => dispatch({ type: PLAN_ACTIONS.UPDATE_NODE_EXPENSE_ITEM, payload: { planId, dayId, nodeId: node.id, expenseId: item.id, field: 'paymentSourceId', value: e.target.value } })}
+                                                        title="支付來源"
+                                                    >
+                                                        {(() => {
+                                                            const availableSources = (planPaymentSources || []).filter((source) => source.method === (item.paymentMethod || 'cash') && ((item.paymentMethod || 'cash') !== 'cash' || !source.currency || source.currency === (item.currency || 'TWD')));
+                                                            return availableSources.length === 0
+                                                                ? <option value="">未指定來源</option>
+                                                                : availableSources.map((source) => (
+                                                                    <option key={`${item.id}-${source.id}`} value={source.id}>{source.name}</option>
+                                                                ));
+                                                        })()}
+                                                    </select>
                                                     <input
                                                         className="text-[10px] text-slate-500 bg-white border border-slate-200 rounded py-0.5 px-1.5 flex-1 min-w-[120px]"
                                                         value={item.note || ''}
@@ -2578,21 +2830,14 @@
                                                 ))}
                                                 {Object.keys(expenseByCurrency).length === 0 && <span className="text-[10px] text-slate-400">總額 0</span>}
                                             </div>
-                                            <div className="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200 ml-1">
-                                                <button
-                                                    onClick={() => dispatch({ type: PLAN_ACTIONS.UPDATE_PAYMENT_STATUS, payload: { planId, dayId, nodeId: node.id, status: 'cash' } })}
-                                                    className={`text-[9px] px-1.5 py-0.5 rounded-md font-bold transition-all ${(!primaryExpense.paymentStatus || primaryExpense.paymentStatus === 'cash') ? 'bg-white text-emerald-600 shadow-sm ring-1 ring-slate-200' : 'text-slate-400 hover:text-slate-600'}`}
-                                                    title="主要支出需備現鈔/現地決済"
-                                                >
-                                                    現鈔
-                                                </button>
-                                                <button
-                                                    onClick={() => dispatch({ type: PLAN_ACTIONS.UPDATE_PAYMENT_STATUS, payload: { planId, dayId, nodeId: node.id, status: 'sunk' } })}
-                                                    className={`text-[9px] px-1.5 py-0.5 rounded-md font-bold transition-all ${(primaryExpense.paymentStatus === 'sunk') ? 'bg-white text-slate-600 shadow-sm ring-1 ring-slate-200' : 'text-slate-400 hover:text-slate-600'}`}
-                                                    title="主要支出已刷卡/沉沒成本"
-                                                >
-                                                    已付
-                                                </button>
+                                            <div className="flex flex-wrap justify-end gap-1 ml-1">
+                                                {paymentSourcePreview.length === 0 ? (
+                                                    <span className="text-[10px] text-slate-400">尚未設定支付方式</span>
+                                                ) : paymentSourcePreview.slice(0, 3).map((label) => (
+                                                    <span key={`${node.id}-${label}`} className="text-[10px] font-medium bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 text-slate-600">
+                                                        {label}
+                                                    </span>
+                                                ))}
                                             </div>
                                         </div>
                                     </div>
@@ -2980,8 +3225,8 @@
             const [data, _dispatchRaw] = useReducer(planReducer, null, () => {
                 try {
                     const saved = localStorage.getItem('travelPlanData');
-                    return ensureChecklistFinancialEssentials(saved ? JSON.parse(saved) : initialData);
-                } catch { return ensureChecklistFinancialEssentials(initialData); }
+                    return normalizeStoredData(saved ? JSON.parse(saved) : initialData);
+                } catch { return normalizeStoredData(initialData); }
             });
             const [activePlanId, setActivePlanId] = useState(data.plans[0]?.id);
             const [activeDayId, setActiveDayId] = useState('checklist');
@@ -3236,6 +3481,8 @@
             const [splitKeyword, setSplitKeyword] = useState('');
             const [splitStatusFilter, setSplitStatusFilter] = useState('all');
             const [splitCurrencyFilter, setSplitCurrencyFilter] = useState('all');
+            const [splitPaymentMethodFilter, setSplitPaymentMethodFilter] = useState('all');
+            const [splitPaymentSourceFilter, setSplitPaymentSourceFilter] = useState('all');
             const [splitPayerFilter, setSplitPayerFilter] = useState('all');
             const [splitUserFilter, setSplitUserFilter] = useState('all');
             const [companionReportExpanded, setCompanionReportExpanded] = useState({});
@@ -5777,6 +6024,7 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                             currentMemos={currentMemos}
                                             collapsedNodes={collapsedNodes}
                                             dayNodes={activeDay.nodes}
+                                            planPaymentSources={getPlanPaymentSources(activePlan)}
                                             dispatch={dispatch}
                                             onDragStart={handleDragStart}
                                             onDragOver={handleDragOver}
@@ -5924,11 +6172,24 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                     {activePlan && activeDayId === 'split' && (() => {
                         const companions = activePlan.companions || [];
                         const companionRules = getPlanCompanionRules(activePlan);
+                        const paymentSources = getPlanPaymentSources(activePlan);
                         const currencyOptions = Object.keys(exchangeRatesToTwd || DEFAULT_EXCHANGE_RATES_TO_TWD);
                         const allEntries = activePlan.days.flatMap(d => d.nodes.flatMap(n =>
                             normalizeExpenseItems(n)
                                 .filter(it => Number(it.amount || 0) > 0)
-                                .map(it => ({ dayId: d.id, dayTitle: d.title, nodeId: n.id, nodeTitle: n.title, ...it }))
+                                .map(it => {
+                                    const enrichedPayment = harmonizeExpensePaymentFields(it, paymentSources);
+                                    const source = paymentSources.find(entry => entry.id === enrichedPayment.paymentSourceId) || null;
+                                    return {
+                                        dayId: d.id,
+                                        dayTitle: d.title,
+                                        nodeId: n.id,
+                                        nodeTitle: n.title,
+                                        ...enrichedPayment,
+                                        paymentSourceName: source?.name || '未指定來源',
+                                        paymentSourceCurrency: source?.currency || ''
+                                    };
+                                })
                         ));
 
                         const entriesForSettlement = (includeEstimatedInSplit
@@ -5944,6 +6205,8 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                             const status = entry.expenseStatus === 'estimated' ? 'estimated' : 'actual';
                             if (splitStatusFilter !== 'all' && status !== splitStatusFilter) return false;
                             if (splitCurrencyFilter !== 'all' && (entry.currency || 'TWD') !== splitCurrencyFilter) return false;
+                            if (splitPaymentMethodFilter !== 'all' && (entry.paymentMethod || 'cash') !== splitPaymentMethodFilter) return false;
+                            if (splitPaymentSourceFilter !== 'all' && (entry.paymentSourceId || '') !== splitPaymentSourceFilter) return false;
                             if (splitPayerFilter !== 'all' && (entry.paidBy || '') !== splitPayerFilter) return false;
 
                             const splitList = getEffectiveSplitAmong(entry, companions);
@@ -5953,11 +6216,37 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                             const categoryText = EXPENSE_CATEGORIES[entry.category] || '其他';
                             const subCategoryText = entry.subCategory || '';
                             const payerName = companions.find(c => c.id === entry.paidBy)?.name || '';
-                            return `${entry.nodeTitle || ''} ${entry.note || ''} ${categoryText} ${subCategoryText} ${payerName}`.toLowerCase().includes(keyword);
+                            const paymentText = `${PAYMENT_METHOD_LABELS[entry.paymentMethod] || ''} ${entry.paymentSourceName || ''}`;
+                            return `${entry.nodeTitle || ''} ${entry.note || ''} ${categoryText} ${subCategoryText} ${payerName} ${paymentText}`.toLowerCase().includes(keyword);
                         }).map(entry => ({
                             ...entry,
                             amountInBase: convertCurrencyAmount(Number(entry.amount || 0), entry.currency || 'TWD', splitBaseCurrency, exchangeRatesToTwd)
                         }));
+
+                        const paymentMethodTotals = entriesForSettlement.reduce((acc, entry) => {
+                            const key = entry.paymentMethod || 'cash';
+                            acc[key] = (acc[key] || 0) + Number(entry.amountInBase || 0);
+                            return acc;
+                        }, {});
+
+                        const paymentSourceUsage = paymentSources.reduce((acc, source) => {
+                            const relatedEntries = entriesForSettlement.filter(entry => entry.paymentSourceId === source.id);
+                            const amountInBase = relatedEntries.reduce((sum, entry) => sum + Number(entry.amountInBase || 0), 0);
+                            const originalByCurrency = relatedEntries.reduce((innerAcc, entry) => {
+                                const cur = entry.currency || 'TWD';
+                                innerAcc[cur] = (innerAcc[cur] || 0) + Number(entry.amount || 0);
+                                return innerAcc;
+                            }, {});
+                            const usedNative = source.currency ? Number(originalByCurrency[source.currency] || 0) : null;
+                            acc[source.id] = {
+                                count: relatedEntries.length,
+                                amountInBase,
+                                originalByCurrency,
+                                usedNative,
+                                remainingNative: source.currency ? Math.max(0, Number(source.initialAmount || 0) - Number(originalByCurrency[source.currency] || 0)) : null
+                            };
+                            return acc;
+                        }, {});
 
                         // 計算每人付款與分攤（依使用人 tags）
                         const summary = companions.map(comp => {
@@ -6007,6 +6296,11 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                 acc[key] = (acc[key] || 0) + Number(it.shareInBase || 0);
                                 return acc;
                             }, {});
+                            const paymentMethodBreakdown = consumedEntries.reduce((acc, it) => {
+                                const key = it.paymentMethod || 'cash';
+                                acc[key] = (acc[key] || 0) + Number(it.shareInBase || 0);
+                                return acc;
+                            }, {});
 
                             return {
                                 ...comp,
@@ -6015,7 +6309,8 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                 paidEntries,
                                 consumedEntries,
                                 categoryTotals,
-                                subCategoryTotals
+                                subCategoryTotals,
+                                paymentMethodBreakdown
                             };
                         });
 
@@ -6208,14 +6503,120 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                         </div>
                                     </div>
 
-                                    {companions.length === 0 ? (
+                                    {companions.length === 0 && (
                                         <div className="text-center py-12 text-slate-400">
                                             <i className="fas fa-user-friends text-4xl mb-3 block"></i>
                                             <p className="font-medium">尚未新增旅伴</p>
                                             <p className="text-sm mt-1">請先新增旅伴，再到各節點指定付款人</p>
                                         </div>
-                                    ) : (
+                                    )}
                                     <>
+                                    <div className="mb-6 bg-white border border-slate-200 rounded-xl p-3">
+                                        <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                                            <h3 className="text-sm font-bold text-slate-700 flex items-center gap-1.5"><i className="fas fa-wallet text-cyan-500"></i> 支付來源 / 工具</h3>
+                                            <button
+                                                onClick={() => dispatch({
+                                                    type: PLAN_ACTIONS.ADD_PAYMENT_SOURCE,
+                                                    payload: {
+                                                        planId: activePlan.id,
+                                                        source: {
+                                                            name: `支付來源 ${paymentSources.length + 1}`,
+                                                            method: 'cash',
+                                                            currency: splitBaseCurrency || 'TWD',
+                                                            initialAmount: 0,
+                                                            note: ''
+                                                        }
+                                                    }
+                                                })}
+                                                className="text-xs font-medium text-cyan-700 border border-cyan-200 bg-cyan-50 rounded-full px-3 py-1 hover:bg-cyan-100"
+                                            >
+                                                <i className="fas fa-plus-circle mr-1"></i>新增來源
+                                            </button>
+                                        </div>
+                                        <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 mb-3">
+                                            {PAYMENT_METHOD_OPTIONS.map((option) => (
+                                                <div key={`method-total-${option.value}`} className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                                                    <div className="text-[11px] text-slate-500">{option.label}</div>
+                                                    <div className="text-sm font-bold text-slate-700">{Number(paymentMethodTotals[option.value] || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <div className="space-y-2">
+                                            {paymentSources.map((source) => {
+                                                const usage = paymentSourceUsage[source.id] || { count: 0, amountInBase: 0, originalByCurrency: {}, usedNative: null, remainingNative: null };
+                                                const originalText = Object.entries(usage.originalByCurrency || {}).length === 0
+                                                    ? '尚未使用'
+                                                    : Object.entries(usage.originalByCurrency).map(([cur, amount]) => `${cur} ${Number(amount || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`).join(' / ');
+                                                return (
+                                                    <div key={source.id} className="border border-slate-200 rounded-lg p-3 bg-slate-50/60">
+                                                        <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr_0.8fr_1fr_auto] gap-2 items-start">
+                                                            <input
+                                                                className="text-sm border border-slate-200 rounded px-2 py-1 bg-white"
+                                                                value={source.name}
+                                                                onChange={(e) => dispatch({ type: PLAN_ACTIONS.UPDATE_PAYMENT_SOURCE, payload: { planId: activePlan.id, sourceId: source.id, field: 'name', value: e.target.value } })}
+                                                                placeholder="來源名稱"
+                                                            />
+                                                            <select
+                                                                className="text-xs border border-slate-200 rounded px-2 py-1 bg-white"
+                                                                value={source.method}
+                                                                onChange={(e) => dispatch({ type: PLAN_ACTIONS.UPDATE_PAYMENT_SOURCE, payload: { planId: activePlan.id, sourceId: source.id, field: 'method', value: e.target.value } })}
+                                                            >
+                                                                {PAYMENT_METHOD_OPTIONS.map((option) => <option key={`${source.id}-${option.value}`} value={option.value}>{option.label}</option>)}
+                                                            </select>
+                                                            <select
+                                                                className="text-xs border border-slate-200 rounded px-2 py-1 bg-white"
+                                                                value={source.method === 'cash' ? (source.currency || 'TWD') : ''}
+                                                                onChange={(e) => dispatch({ type: PLAN_ACTIONS.UPDATE_PAYMENT_SOURCE, payload: { planId: activePlan.id, sourceId: source.id, field: 'currency', value: e.target.value } })}
+                                                                disabled={source.method !== 'cash'}
+                                                            >
+                                                                {source.method !== 'cash' ? <option value="">不限定幣別</option> : currencyOptions.map((cur) => <option key={`${source.id}-${cur}`} value={cur}>{cur}</option>)}
+                                                            </select>
+                                                            <input
+                                                                type="number"
+                                                                min="0"
+                                                                className="text-xs border border-slate-200 rounded px-2 py-1 bg-white"
+                                                                value={Number(source.initialAmount || 0)}
+                                                                onChange={(e) => dispatch({ type: PLAN_ACTIONS.UPDATE_PAYMENT_SOURCE, payload: { planId: activePlan.id, sourceId: source.id, field: 'initialAmount', value: e.target.value } })}
+                                                                placeholder={source.method === 'cash' ? '自備金額' : '額度 / 預算'}
+                                                            />
+                                                            <button
+                                                                onClick={() => dispatch({ type: PLAN_ACTIONS.DELETE_PAYMENT_SOURCE, payload: { planId: activePlan.id, sourceId: source.id } })}
+                                                                className="text-xs px-2 py-1 rounded border border-rose-200 text-rose-600 bg-white hover:bg-rose-50"
+                                                                title="刪除此來源"
+                                                            >
+                                                                刪除
+                                                            </button>
+                                                        </div>
+                                                        <input
+                                                            className="mt-2 w-full text-xs border border-slate-200 rounded px-2 py-1 bg-white"
+                                                            value={source.note || ''}
+                                                            onChange={(e) => dispatch({ type: PLAN_ACTIONS.UPDATE_PAYMENT_SOURCE, payload: { planId: activePlan.id, sourceId: source.id, field: 'note', value: e.target.value } })}
+                                                            placeholder="備註，例如：旅前兌換、主力卡別、綁定帳號"
+                                                        />
+                                                        <div className="mt-2 grid grid-cols-2 lg:grid-cols-4 gap-2 text-[11px]">
+                                                            <div className="bg-white border border-slate-200 rounded px-2 py-1">
+                                                                <div className="text-slate-500">筆數</div>
+                                                                <div className="font-semibold text-slate-700">{usage.count}</div>
+                                                            </div>
+                                                            <div className="bg-white border border-slate-200 rounded px-2 py-1">
+                                                                <div className="text-slate-500">折算 {splitBaseCurrency}</div>
+                                                                <div className="font-semibold text-slate-700">{Number(usage.amountInBase || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                                                            </div>
+                                                            <div className="bg-white border border-slate-200 rounded px-2 py-1 col-span-2 lg:col-span-1">
+                                                                <div className="text-slate-500">原始支出</div>
+                                                                <div className="font-semibold text-slate-700 truncate">{originalText}</div>
+                                                            </div>
+                                                            <div className="bg-white border border-slate-200 rounded px-2 py-1">
+                                                                <div className="text-slate-500">剩餘可用</div>
+                                                                <div className="font-semibold text-slate-700">{source.currency ? `${source.currency} ${Number((usage.remainingNative ?? source.initialAmount) || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}` : '-'}</div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+
                                     {/* 幣別自動換算 */}
                                     <div className="mb-6 bg-emerald-50/60 border border-emerald-100 rounded-xl p-3">
                                         <div className="flex flex-wrap items-center gap-2 mb-2">
@@ -6476,7 +6877,7 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                                                                         <span className="font-medium text-slate-700 truncate">{entry.dayTitle || 'Day'} · {entry.nodeTitle || '未命名'}</span>
                                                                                         <span className="text-cyan-700 font-semibold">{Number(entry.shareInBase || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
                                                                                     </div>
-                                                                                    <div className="text-slate-500">原始 {Number(entry.amount || 0).toLocaleString()} {entry.currency || ''} / {entry.splitCount} 人分攤</div>
+                                                                                        <div className="text-slate-500">原始 {Number(entry.amount || 0).toLocaleString()} {entry.currency || ''} / {entry.splitCount} 人分攤 / {PAYMENT_METHOD_LABELS[entry.paymentMethod] || '未指定'} / {entry.paymentSourceName || '未指定來源'}</div>
                                                                                 </div>
                                                                             ))}
                                                                         </div>
@@ -6493,7 +6894,7 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                     {/* 明細表 */}
                                     <div>
                                         <h3 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-1.5"><i className="fas fa-list-alt text-emerald-500"></i> 花費明細</h3>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 mb-3">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-2 mb-3">
                                             <input
                                                 className="text-xs border border-slate-200 rounded px-2 py-1"
                                                 placeholder="搜尋項目 / 備註 / 類別"
@@ -6508,6 +6909,14 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                             <select className="text-xs border border-slate-200 rounded px-2 py-1" value={splitCurrencyFilter} onChange={(e) => setSplitCurrencyFilter(e.target.value)}>
                                                 <option value="all">幣別: 全部</option>
                                                 {[...new Set(allEntries.map(it => it.currency || 'TWD'))].map(cur => <option key={cur} value={cur}>{cur}</option>)}
+                                            </select>
+                                            <select className="text-xs border border-slate-200 rounded px-2 py-1" value={splitPaymentMethodFilter} onChange={(e) => setSplitPaymentMethodFilter(e.target.value)}>
+                                                <option value="all">方式: 全部</option>
+                                                {PAYMENT_METHOD_OPTIONS.map((option) => <option key={`filter-method-${option.value}`} value={option.value}>{option.label}</option>)}
+                                            </select>
+                                            <select className="text-xs border border-slate-200 rounded px-2 py-1" value={splitPaymentSourceFilter} onChange={(e) => setSplitPaymentSourceFilter(e.target.value)}>
+                                                <option value="all">來源: 全部</option>
+                                                {paymentSources.map((source) => <option key={`filter-source-${source.id}`} value={source.id}>{source.name}</option>)}
                                             </select>
                                             <select className="text-xs border border-slate-200 rounded px-2 py-1" value={splitPayerFilter} onChange={(e) => setSplitPayerFilter(e.target.value)}>
                                                 <option value="all">付款人: 全部</option>
@@ -6524,6 +6933,8 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                                         setSplitKeyword('');
                                                         setSplitStatusFilter('all');
                                                         setSplitCurrencyFilter('all');
+                                                        setSplitPaymentMethodFilter('all');
+                                                        setSplitPaymentSourceFilter('all');
                                                         setSplitPayerFilter('all');
                                                         setSplitUserFilter('all');
                                                     }}
@@ -6577,6 +6988,19 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                                                 </select>
                                                             </label>
                                                             <label className="text-[11px] text-slate-500">
+                                                                支付方式
+                                                                <select
+                                                                    className="mt-0.5 w-full text-xs border rounded px-1.5 py-1 bg-white"
+                                                                    value={entry.paymentMethod || 'cash'}
+                                                                    onChange={(e) => dispatch({
+                                                                        type: PLAN_ACTIONS.UPDATE_NODE_EXPENSE_ITEM,
+                                                                        payload: { planId: activePlan.id, dayId: entry.dayId, nodeId: entry.nodeId, expenseId: entry.id, field: 'paymentMethod', value: e.target.value }
+                                                                    })}
+                                                                >
+                                                                    {PAYMENT_METHOD_OPTIONS.map((option) => <option key={`mobile-method-${entry.id}-${option.value}`} value={option.value}>{option.label}</option>)}
+                                                                </select>
+                                                            </label>
+                                                            <label className="text-[11px] text-slate-500">
                                                                 付款人
                                                                 <select
                                                                     className="mt-0.5 w-full text-xs border rounded px-1.5 py-1 bg-white"
@@ -6588,6 +7012,21 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                                                 >
                                                                     <option value="">未指定</option>
                                                                     {companions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                                                </select>
+                                                            </label>
+                                                            <label className="text-[11px] text-slate-500">
+                                                                支付來源
+                                                                <select
+                                                                    className="mt-0.5 w-full text-xs border rounded px-1.5 py-1 bg-white"
+                                                                    value={entry.paymentSourceId || ''}
+                                                                    onChange={(e) => dispatch({
+                                                                        type: PLAN_ACTIONS.UPDATE_NODE_EXPENSE_ITEM,
+                                                                        payload: { planId: activePlan.id, dayId: entry.dayId, nodeId: entry.nodeId, expenseId: entry.id, field: 'paymentSourceId', value: e.target.value }
+                                                                    })}
+                                                                >
+                                                                    {(paymentSources.filter((source) => source.method === (entry.paymentMethod || 'cash') && ((entry.paymentMethod || 'cash') !== 'cash' || !source.currency || source.currency === (entry.currency || 'TWD'))).length === 0)
+                                                                        ? <option value="">未指定來源</option>
+                                                                        : paymentSources.filter((source) => source.method === (entry.paymentMethod || 'cash') && ((entry.paymentMethod || 'cash') !== 'cash' || !source.currency || source.currency === (entry.currency || 'TWD'))).map((source) => <option key={`mobile-source-${entry.id}-${source.id}`} value={source.id}>{source.name}</option>)}
                                                                 </select>
                                                             </label>
                                                         </div>
@@ -6630,6 +7069,7 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                                     <th className="pb-2 font-medium hidden lg:table-cell">備註</th>
                                                     <th className="pb-2 font-medium">金額</th>
                                                     <th className="pb-2 font-medium">狀態</th>
+                                                    <th className="pb-2 font-medium">方式 / 來源</th>
                                                     <th className="pb-2 font-medium">付款人</th>
                                                     <th className="pb-2 font-medium">使用人 Tags</th>
                                                 </tr></thead>
@@ -6659,6 +7099,32 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                                                     <option value="actual">{EXPENSE_STATUS_LABELS.actual}</option>
                                                                     <option value="estimated">{EXPENSE_STATUS_LABELS.estimated}</option>
                                                                 </select>
+                                                            </td>
+                                                            <td className="py-2">
+                                                                <div className="space-y-1">
+                                                                    <select
+                                                                        className="text-xs border rounded px-1.5 py-0.5 bg-white w-full"
+                                                                        value={entry.paymentMethod || 'cash'}
+                                                                        onChange={(e) => dispatch({
+                                                                            type: PLAN_ACTIONS.UPDATE_NODE_EXPENSE_ITEM,
+                                                                            payload: { planId: activePlan.id, dayId: entry.dayId, nodeId: entry.nodeId, expenseId: entry.id, field: 'paymentMethod', value: e.target.value }
+                                                                        })}
+                                                                    >
+                                                                        {PAYMENT_METHOD_OPTIONS.map((option) => <option key={`table-method-${entry.id}-${option.value}`} value={option.value}>{option.label}</option>)}
+                                                                    </select>
+                                                                    <select
+                                                                        className="text-xs border rounded px-1.5 py-0.5 bg-white w-full"
+                                                                        value={entry.paymentSourceId || ''}
+                                                                        onChange={(e) => dispatch({
+                                                                            type: PLAN_ACTIONS.UPDATE_NODE_EXPENSE_ITEM,
+                                                                            payload: { planId: activePlan.id, dayId: entry.dayId, nodeId: entry.nodeId, expenseId: entry.id, field: 'paymentSourceId', value: e.target.value }
+                                                                        })}
+                                                                    >
+                                                                        {(paymentSources.filter((source) => source.method === (entry.paymentMethod || 'cash') && ((entry.paymentMethod || 'cash') !== 'cash' || !source.currency || source.currency === (entry.currency || 'TWD'))).length === 0)
+                                                                            ? <option value="">未指定來源</option>
+                                                                            : paymentSources.filter((source) => source.method === (entry.paymentMethod || 'cash') && ((entry.paymentMethod || 'cash') !== 'cash' || !source.currency || source.currency === (entry.currency || 'TWD'))).map((source) => <option key={`table-source-${entry.id}-${source.id}`} value={source.id}>{source.name}</option>)}
+                                                                    </select>
+                                                                </div>
                                                             </td>
                                                             <td className="py-2">
                                                                 <select
@@ -6710,7 +7176,6 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                         )}
                                     </div>
                                     </>
-                                    )}
                                 </div>
                             </div>
                         </div>
