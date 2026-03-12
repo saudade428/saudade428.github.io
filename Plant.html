@@ -6520,10 +6520,10 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                             <div className="flex items-center gap-2">
                                                 <button
                                                     onClick={() => setPaymentSourcesCollapsed(!paymentSourcesCollapsed)}
-                                                    className="text-slate-500 hover:text-slate-700 transition-colors"
-                                                    title={paymentSourcesCollapsed ? '展開' : '收折'}
+                                                    className="flex items-center justify-center w-6 h-6 rounded-full text-slate-600 hover:bg-slate-200 hover:text-slate-800 transition-all"
+                                                    title={paymentSourcesCollapsed ? '點擊展開' : '點擊收折'}
                                                 >
-                                                    <i className={`fas fa-chevron-${paymentSourcesCollapsed ? 'down' : 'up'}`}></i>
+                                                    <i className={`fas fa-chevron-${paymentSourcesCollapsed ? 'down' : 'up'} text-lg`}></i>
                                                 </button>
                                                 <h3 className="text-sm font-bold text-slate-700 flex items-center gap-1.5"><i className="fas fa-wallet text-cyan-500"></i> 支付來源 / 工具</h3>
                                             </div>
