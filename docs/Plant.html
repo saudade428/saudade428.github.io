@@ -4707,6 +4707,9 @@
                             ? Math.max(0, Number(source.initialAmount || 0) - Number(origByCurrency[source.currency] || 0))
                             : null;
 
+                        const remainingHtml = remaining !== null
+                            ? '<div style="font-size:11px;color:#64748b;">剩餘：' + source.currency + ' ' + Number(remaining).toLocaleString(undefined, { maximumFractionDigits: 0 }) + '</div>'
+                            : '';
                         const card = document.createElement('div');
                         card.style.cssText = 'border:1px solid #e2e8f0;border-radius:8px;padding:10px;background:#f8fafc;';
                         card.innerHTML = `
@@ -4714,7 +4717,7 @@
                             <div style="font-size:11px;color:#64748b;margin-top:2px;">${PAYMENT_METHOD_LABELS[source.method] || '其他方式'}</div>
                             <div style="font-size:11px;color:#64748b;">原始：${origText}</div>
                             <div style="font-size:12px;font-weight:700;color:#0284c7;margin-top:4px;">折算 ${baseCurrency}：${Number(amountInBase).toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
-                            ${remaining !== null ? `<div style="font-size:11px;color:#64748b;">剩餘：${source.currency} ${Number(remaining).toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>` : ''}
+                            ${remainingHtml}
                         `;
                         sourceGrid.appendChild(card);
                     });
