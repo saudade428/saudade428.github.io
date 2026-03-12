@@ -163,12 +163,58 @@
                         }
                     ],
                     checklists: [
-                        { id: "cl-1", category: "文件與財務", items: [{ id: "cli-1", text: "護照 (確認效期6個月以上)", isChecked: false }, { id: "cli-2", text: "日幣現金與信用卡", isChecked: true }] },
+                        { id: "cl-1", category: "文件與財務", items: [{ id: "cli-1", text: "護照 (確認效期6個月以上)", isChecked: false }, { id: "cli-2", text: "支付方式 / 工具確認（刷卡、電子支付）", isChecked: false }, { id: "cli-3", text: "自備現鈔（含小額零錢）", isChecked: false }] },
                         { id: "cl-2", category: "電子產品", items: [{ id: "cli-3", text: "esim 網卡或 Wifi 機", isChecked: false }, { id: "cli-4", text: "行動電源與充電線", isChecked: false }] },
                         { id: "cl-3", category: "生活衣物", items: [{ id: "cli-5", text: "換洗衣物與外套", isChecked: false }, { id: "cli-6", text: "個人常備藥品", isChecked: false }] }
                     ]
                 }
             ]
+        };
+
+        const ensureChecklistFinancialEssentials = (rawData) => {
+            if (!rawData || !Array.isArray(rawData.plans)) return initialData;
+
+            const createPaymentMethodItem = () => ({
+                id: generateId(),
+                text: '支付方式 / 工具確認（刷卡、電子支付）',
+                isChecked: false
+            });
+
+            const createCashItem = () => ({
+                id: generateId(),
+                text: '自備現鈔（含小額零錢）',
+                isChecked: false
+            });
+
+            return {
+                ...rawData,
+                plans: rawData.plans.map((plan) => {
+                    const checklists = Array.isArray(plan.checklists) ? [...plan.checklists] : [];
+                    const financialIndex = checklists.findIndex((cat) => cat?.category === '文件與財務');
+                    const paymentMatcher = /(支付方式|支付工具|電子支付|行動支付|apple pay|google pay|line pay)/i;
+                    const cashMatcher = /(自備現鈔|現鈔|小額零錢|備用現金)/i;
+
+                    if (financialIndex === -1) {
+                        checklists.unshift({
+                            id: generateId(),
+                            category: '文件與財務',
+                            items: [createPaymentMethodItem(), createCashItem()]
+                        });
+                    } else {
+                        const category = checklists[financialIndex] || {};
+                        const items = Array.isArray(category.items) ? [...category.items] : [];
+                        if (!items.some((item) => paymentMatcher.test(String(item?.text || '')))) {
+                            items.push(createPaymentMethodItem());
+                        }
+                        if (!items.some((item) => cashMatcher.test(String(item?.text || '')))) {
+                            items.push(createCashItem());
+                        }
+                        checklists[financialIndex] = { ...category, items };
+                    }
+
+                    return { ...plan, checklists };
+                })
+            };
         };
 
         const PLAN_ACTIONS = {
@@ -243,7 +289,7 @@
 
             switch (type) {
                 case PLAN_ACTIONS.SET_DATA:
-                    return payload;
+                    return ensureChecklistFinancialEssentials(payload);
                 
                 case PLAN_ACTIONS.UPDATE_NODE_TITLE:
                     return updateNode(payload.planId, payload.dayId, payload.nodeId, n => {
@@ -2934,8 +2980,8 @@
             const [data, _dispatchRaw] = useReducer(planReducer, null, () => {
                 try {
                     const saved = localStorage.getItem('travelPlanData');
-                    return saved ? JSON.parse(saved) : initialData;
-                } catch { return initialData; }
+                    return ensureChecklistFinancialEssentials(saved ? JSON.parse(saved) : initialData);
+                } catch { return ensureChecklistFinancialEssentials(initialData); }
             });
             const [activePlanId, setActivePlanId] = useState(data.plans[0]?.id);
             const [activeDayId, setActiveDayId] = useState('checklist');
