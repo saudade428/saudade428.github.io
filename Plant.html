@@ -174,52 +174,6 @@
             ]
         };
 
-        const ensureChecklistFinancialEssentials = (rawData) => {
-            if (!rawData || !Array.isArray(rawData.plans)) return initialData;
-
-            const createPaymentMethodItem = () => ({
-                id: generateId(),
-                text: '支付方式 / 工具確認（刷卡、電子支付）',
-                isChecked: false
-            });
-
-            const createCashItem = () => ({
-                id: generateId(),
-                text: '自備現鈔（含小額零錢）',
-                isChecked: false
-            });
-
-            return {
-                ...rawData,
-                plans: rawData.plans.map((plan) => {
-                    const checklists = Array.isArray(plan.checklists) ? [...plan.checklists] : [];
-                    const financialIndex = checklists.findIndex((cat) => cat?.category === '文件與財務');
-                    const paymentMatcher = /(支付方式|支付工具|電子支付|行動支付|apple pay|google pay|line pay)/i;
-                    const cashMatcher = /(自備現鈔|現鈔|小額零錢|備用現金)/i;
-
-                    if (financialIndex === -1) {
-                        checklists.unshift({
-                            id: generateId(),
-                            category: '文件與財務',
-                            items: [createPaymentMethodItem(), createCashItem()]
-                        });
-                    } else {
-                        const category = checklists[financialIndex] || {};
-                        const items = Array.isArray(category.items) ? [...category.items] : [];
-                        if (!items.some((item) => paymentMatcher.test(String(item?.text || '')))) {
-                            items.push(createPaymentMethodItem());
-                        }
-                        if (!items.some((item) => cashMatcher.test(String(item?.text || '')))) {
-                            items.push(createCashItem());
-                        }
-                        checklists[financialIndex] = { ...category, items };
-                    }
-
-                    return { ...plan, checklists };
-                })
-            };
-        };
-
         const PLAN_ACTIONS = {
             UPDATE_NODE_TITLE: 'UPDATE_NODE_TITLE',
             UPDATE_NODE_TYPE: 'UPDATE_NODE_TYPE',
@@ -991,7 +945,7 @@
         }
 
         function normalizeStoredData(rawData) {
-            return ensurePlanPaymentData(ensureChecklistFinancialEssentials(rawData));
+            return ensurePlanPaymentData(rawData);
         }
 
         const createDefaultCompanionRuleMap = () => Object.keys(EXPENSE_CATEGORIES).reduce((acc, key) => {
