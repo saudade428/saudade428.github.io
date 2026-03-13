@@ -1405,13 +1405,13 @@
                         <div className="memo-actions flex items-center gap-1">
                             <button onClick={() => setShowColorPicker(!showColorPicker)} className="text-black/50 hover:text-black/80 text-xs p-0.5" title="選擇顏色">
                                 <i className="fas fa-palette"></i>
-                                                <button
-                                                    onClick={() => setPaymentSourcesCollapsed(!paymentSourcesCollapsed)}
-                                                    className="flex items-center justify-center w-6 h-6 rounded-full text-slate-600 hover:bg-slate-200 hover:text-slate-800 transition-all"
-                                                    title={paymentSourcesCollapsed ? '點擊展開' : '點擊收折'}
-                                                >
-                                                    <i className={`fas fa-chevron-${paymentSourcesCollapsed ? 'down' : 'up'} text-lg`}></i>
-                                                </button>
+                            </button>
+                            <label className="text-black/50 hover:text-blue-600 text-xs cursor-pointer p-0.5" title="新增圖片">
+                                <i className="fas fa-image"></i>
+                                <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+                            </label>
+                            <button 
+                                onClick={() => {
                                     const nextState = !isMinimized;
                                     setIsMinimized(nextState);
                                     dispatch({ 
