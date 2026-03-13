@@ -2044,6 +2044,7 @@
                                 min="0"
                                 className="text-[11px] border border-slate-200 rounded px-1 py-0.5 bg-white w-full"
                                 value={child.estimatedCost || 0}
+                                onFocus={(e) => e.target.select()}
                                 onChange={(e) => dispatch({ type: PLAN_ACTIONS.UPDATE_CHILD_FIELD, payload: { planId, dayId, nodeId, childId: child.id, field: 'estimatedCost', value: Number(e.target.value || 0) } })}
                                 placeholder="預估金額"
                             />
@@ -6644,6 +6645,7 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                                                 min="0"
                                                                 className="text-xs border border-slate-200 rounded px-2 py-1 bg-white"
                                                                 value={Number(source.initialAmount || 0)}
+                                                                onFocus={(e) => e.target.select()}
                                                                 onChange={(e) => dispatch({ type: PLAN_ACTIONS.UPDATE_PAYMENT_SOURCE, payload: { planId: activePlan.id, sourceId: source.id, field: 'initialAmount', value: e.target.value } })}
                                                                 placeholder={source.method === 'cash' ? '自備金額' : '額度 / 預算'}
                                                             />
@@ -6709,6 +6711,7 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                                         min="0"
                                                         className="w-full text-xs border border-slate-200 rounded px-1 py-0.5"
                                                         value={exchangeRatesToTwd[cur] ?? 0}
+                                                        onFocus={(e) => e.target.select()}
                                                         onChange={(e) => {
                                                             const nextRate = Number(e.target.value || 0);
                                                             setExchangeRatesToTwd(prev => ({ ...prev, [cur]: nextRate }));
@@ -7238,6 +7241,7 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                             max="50"
                                             className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
                                             value={pdfSettings.margin}
+                                            onFocus={(e) => e.target.select()}
                                             onChange={(e) => setPdfSettings(s => ({...s, margin: Number(e.target.value)}))}
                                         />
                                     </div>
