@@ -4391,13 +4391,27 @@
                             const childCard = document.createElement('div');
                             childCard.style.cssText = `background:#fff;border:1px solid ${ns.border}50;border-left:3px solid ${ns.border};border-radius:6px;padding:8px 10px;min-width:160px;flex:1;page-break-inside:avoid;break-inside:avoid;`;
                             childCard.innerHTML = `<div style="font-size:13px;font-weight:600;color:${ns.border};margin-bottom:2px;">${child.title}</div>`;
-                            child.subtasks.forEach(cs => {
+                            // 預估費用
+                            const childCostEnabled = child.estimatedCostEnabled === true || Number(child.estimatedCost || 0) > 0 || Number(child.estimatedCostMin || 0) > 0;
+                            if (childCostEnabled) {
+                                const cur = child.estimatedCostCurrency || 'TWD';
+                                const costType = child.estimatedCostType || 'single';
+                                let costText;
+                                if (costType === 'range') {
+                                    costText = cur + ' ' + Number(child.estimatedCostMin || 0).toLocaleString() + ' ~ ' + Number(child.estimatedCostMax || 0).toLocaleString();
+                                } else {
+                                    costText = cur + ' ' + Number(child.estimatedCost || 0).toLocaleString();
+                                }
+                                const costEl = document.createElement('div');
+                                costEl.style.cssText = 'font-size:11px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:4px;padding:2px 6px;margin-top:4px;display:inline-block;';
+                                costEl.textContent = '\uD83E\uDE99 ' + costText;
+                                childCard.appendChild(costEl);
+                            }
+                            // 備註
+                            (child.subtasks || []).forEach(cs => {
                                 const csEl = document.createElement('div');
-                                const textColor = cs.isCompleted ? '#94a3b8' : '#64748b';
-                                const textDecor = cs.isCompleted ? 'line-through' : 'none';
-                                const icon = cs.isCompleted ? '☑️' : '🔲';
-                                csEl.style.cssText = `font-size:11px;color:${textColor};text-decoration:${textDecor};margin-top:2px;padding-left:6px;border-left:2px dashed #cbd5e140;white-space:pre-wrap;display:flex;align-items:flex-start;gap:4px;`;
-                                csEl.innerHTML = `<span style="font-size:10px;margin-top:1px;">${icon}</span><span style="flex:1;line-height:1.4;">${cs.text}</span>`;
+                                csEl.style.cssText = 'font-size:11px;color:#64748b;margin-top:3px;padding-left:6px;border-left:2px dashed #cbd5e1;white-space:pre-wrap;line-height:1.4;';
+                                csEl.textContent = cs.text;
                                 childCard.appendChild(csEl);
                             });
                             childRow.appendChild(childCard);
@@ -5233,8 +5247,18 @@ ${pages.join('\n')}
                             if (node.children && node.children.length > 0) {
                                 md += `- **子方案：**\n`;
                                 node.children.forEach(child => {
-                                    md += `  - **${child.title}** (${child.cost ? `${child.currency} ${child.cost}` : '無預算'})\n`;
-                                    if (child.note) md += `    - ${child.note}\n`;
+                                    const cCostEnabled = child.estimatedCostEnabled === true || Number(child.estimatedCost || 0) > 0 || Number(child.estimatedCostMin || 0) > 0;
+                                    let cCostStr = '無預算';
+                                    if (cCostEnabled) {
+                                        const cCur = child.estimatedCostCurrency || 'TWD';
+                                        if ((child.estimatedCostType || 'single') === 'range') {
+                                            cCostStr = cCur + ' ' + Number(child.estimatedCostMin || 0).toLocaleString() + ' ~ ' + Number(child.estimatedCostMax || 0).toLocaleString();
+                                        } else {
+                                            cCostStr = cCur + ' ' + Number(child.estimatedCost || 0).toLocaleString();
+                                        }
+                                    }
+                                    md += `  - **${child.title}** (${cCostStr})\n`;
+                                    (child.subtasks || []).forEach(cs => { md += '    - ' + cs.text + '\n'; });
                                 });
                             }
                             md += `\n`;
