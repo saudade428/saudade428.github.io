@@ -433,7 +433,7 @@
                 case PLAN_ACTIONS.ADD_CHILD_NODE:
                     return updateNode(payload.planId, payload.dayId, payload.nodeId, n => ({
                         ...n,
-                        children: [...(n.children || []), { id: generateId(), title: "備選方案", subtasks: [], estimatedCost: 0, estimatedCostCurrency: '', estimatedCostNote: '' }]
+                        children: [...(n.children || []), { id: generateId(), title: "備選方案", subtasks: [], estimatedCostEnabled: false, estimatedCostType: 'single', estimatedCost: 0, estimatedCostMin: 0, estimatedCostMax: 0, estimatedCostCurrency: 'TWD' }]
                     }));
 
                 case PLAN_ACTIONS.UPDATE_CHILD_TITLE:
@@ -2011,7 +2011,8 @@
         // --- NodeItem 相關抽離元件 (Phase 1 效能優化) ---
         const ChildNodeItem = React.memo(({ child, dayId, nodeId, planId, nodeStyle, dispatch }) => {
             const childCurrencyOptions = Object.keys(DEFAULT_EXCHANGE_RATES_TO_TWD);
-            const hasEstCost = Number(child.estimatedCost || 0) > 0;
+            const costEnabled = child.estimatedCostEnabled === true || Number(child.estimatedCost || 0) > 0 || Number(child.estimatedCostMin || 0) > 0;
+            const costType = child.estimatedCostType || 'single';
             return (
                 <div className="flex-shrink-0 w-56 bg-white border rounded-lg p-2.5 group/child hover:shadow transition-shadow" style={{ borderLeft: `3px solid ${nodeStyle.border}`, borderColor: '#e2e8f0' }}>
                     <div className="flex justify-between items-center mb-1.5">
@@ -2025,50 +2026,55 @@
                             <i className="fas fa-times"></i>
                         </button>
                     </div>
-                    {/* 預估費用 */}
-                    <div className="mb-1.5">
-                        <div className="flex items-center gap-1">
-                            <i className="fas fa-coins text-[10px] text-amber-400"></i>
-                            <span className="text-[10px] text-slate-400">預估費用</span>
+                    {/* 預估費用（可選） */}
+                    {costEnabled && (
+                        <div className="mb-2 bg-amber-50/70 border border-amber-100 rounded p-1.5">
+                            <div className="flex items-center justify-between mb-1">
+                                <div className="flex items-center gap-1">
+                                    <i className="fas fa-coins text-[10px] text-amber-500"></i>
+                                    <span className="text-[10px] font-medium text-amber-700">預估費用</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <label className="flex items-center gap-0.5 text-[10px] text-slate-500 cursor-pointer">
+                                        <input type="radio" name={'costType-' + child.id} value="single" checked={costType === 'single'} onChange={() => dispatch({ type: PLAN_ACTIONS.UPDATE_CHILD_FIELD, payload: { planId, dayId, nodeId, childId: child.id, field: 'estimatedCostType', value: 'single' } })} className="w-2.5 h-2.5" />
+                                        單筆
+                                    </label>
+                                    <label className="flex items-center gap-0.5 text-[10px] text-slate-500 cursor-pointer">
+                                        <input type="radio" name={'costType-' + child.id} value="range" checked={costType === 'range'} onChange={() => dispatch({ type: PLAN_ACTIONS.UPDATE_CHILD_FIELD, payload: { planId, dayId, nodeId, childId: child.id, field: 'estimatedCostType', value: 'range' } })} className="w-2.5 h-2.5" />
+                                        區間
+                                    </label>
+                                    <button onClick={() => dispatch({ type: PLAN_ACTIONS.UPDATE_CHILD_FIELD, payload: { planId, dayId, nodeId, childId: child.id, field: 'estimatedCostEnabled', value: false } })} className="text-[10px] text-slate-300 hover:text-red-500" title="移除費用">
+                                        <i className="fas fa-times"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="flex gap-1">
+                                <select className="text-[11px] border border-slate-200 rounded px-1 py-0.5 bg-white w-16 flex-shrink-0" value={child.estimatedCostCurrency || 'TWD'} onChange={(e) => dispatch({ type: PLAN_ACTIONS.UPDATE_CHILD_FIELD, payload: { planId, dayId, nodeId, childId: child.id, field: 'estimatedCostCurrency', value: e.target.value } })}>
+                                    {childCurrencyOptions.map(cur => <option key={cur} value={cur}>{cur}</option>)}
+                                </select>
+                                {costType === 'single' ? (
+                                    <input type="number" min="0" className="text-[11px] border border-slate-200 rounded px-1 py-0.5 bg-white w-full" value={child.estimatedCost || 0} onFocus={(e) => e.target.select()} onChange={(e) => dispatch({ type: PLAN_ACTIONS.UPDATE_CHILD_FIELD, payload: { planId, dayId, nodeId, childId: child.id, field: 'estimatedCost', value: Number(e.target.value || 0) } })} placeholder="金額" />
+                                ) : (
+                                    <div className="flex items-center gap-1 w-full">
+                                        <input type="number" min="0" className="text-[11px] border border-slate-200 rounded px-1 py-0.5 bg-white w-full" value={child.estimatedCostMin || 0} onFocus={(e) => e.target.select()} onChange={(e) => dispatch({ type: PLAN_ACTIONS.UPDATE_CHILD_FIELD, payload: { planId, dayId, nodeId, childId: child.id, field: 'estimatedCostMin', value: Number(e.target.value || 0) } })} placeholder="最低" />
+                                        <span className="text-[10px] text-slate-400 flex-shrink-0">~</span>
+                                        <input type="number" min="0" className="text-[11px] border border-slate-200 rounded px-1 py-0.5 bg-white w-full" value={child.estimatedCostMax || 0} onFocus={(e) => e.target.select()} onChange={(e) => dispatch({ type: PLAN_ACTIONS.UPDATE_CHILD_FIELD, payload: { planId, dayId, nodeId, childId: child.id, field: 'estimatedCostMax', value: Number(e.target.value || 0) } })} placeholder="最高" />
+                                    </div>
+                                )}
+                            </div>
                         </div>
-                        <div className="flex gap-1 mt-0.5">
-                            <select
-                                className="text-[11px] border border-slate-200 rounded px-1 py-0.5 bg-white w-16 flex-shrink-0"
-                                value={child.estimatedCostCurrency || 'TWD'}
-                                onChange={(e) => dispatch({ type: PLAN_ACTIONS.UPDATE_CHILD_FIELD, payload: { planId, dayId, nodeId, childId: child.id, field: 'estimatedCostCurrency', value: e.target.value } })}
-                            >
-                                {childCurrencyOptions.map(cur => <option key={cur} value={cur}>{cur}</option>)}
-                            </select>
-                            <input
-                                type="number"
-                                min="0"
-                                className="text-[11px] border border-slate-200 rounded px-1 py-0.5 bg-white w-full"
-                                value={child.estimatedCost || 0}
-                                onFocus={(e) => e.target.select()}
-                                onChange={(e) => dispatch({ type: PLAN_ACTIONS.UPDATE_CHILD_FIELD, payload: { planId, dayId, nodeId, childId: child.id, field: 'estimatedCost', value: Number(e.target.value || 0) } })}
-                                placeholder="預估金額"
-                            />
-                        </div>
-                        {hasEstCost && (
-                            <input
-                                className="mt-1 w-full text-[10px] border border-slate-200 rounded px-1.5 py-0.5 bg-white"
-                                value={child.estimatedCostNote || ''}
-                                onChange={(e) => dispatch({ type: PLAN_ACTIONS.UPDATE_CHILD_FIELD, payload: { planId, dayId, nodeId, childId: child.id, field: 'estimatedCostNote', value: e.target.value } })}
-                                placeholder="備註（可選）"
-                            />
-                        )}
-                    </div>
-                    {/* 子節點的備註/時間 */}
-                    {child.subtasks.length > 0 && (
+                    )}
+                    {/* 備註列表（多筆） */}
+                    {(child.subtasks || []).length > 0 && (
                         <div className="pl-2 border-l-2 border-dashed border-slate-200 space-y-1 mb-1.5">
                             {child.subtasks.map(csub => (
                                 <div key={csub.id} className="flex items-start gap-1 group/csub">
-                                    <i className="far fa-clock text-[10px] text-slate-400 mt-1"></i>
+                                    <i className="far fa-comment-dots text-[10px] text-slate-400 mt-1 flex-shrink-0"></i>
                                     <AutoResizeTextarea
                                         className="text-xs text-slate-500 bg-transparent border-none focus:outline-none focus:bg-white w-full py-0.5 px-0.5 rounded"
                                         value={csub.text}
                                         onChange={(e) => dispatch({ type: PLAN_ACTIONS.UPDATE_CHILD_SUBTASK, payload: { planId, dayId, nodeId, childId: child.id, subtaskId: csub.id, text: e.target.value } })}
-                                        placeholder="預估時間 / 備註..."
+                                        placeholder="備註..."
                                     />
                                     <button onClick={() => dispatch({ type: PLAN_ACTIONS.DELETE_CHILD_SUBTASK, payload: { planId, dayId, nodeId, childId: child.id, subtaskId: csub.id } })} className="text-slate-300 hover:text-red-500 opacity-0 group-hover/csub:opacity-100 text-[10px] flex-shrink-0">
                                         <i className="fas fa-times"></i>
@@ -2077,9 +2083,17 @@
                             ))}
                         </div>
                     )}
-                    <button onClick={() => dispatch({ type: PLAN_ACTIONS.ADD_CHILD_SUBTASK, payload: { planId, dayId, nodeId, childId: child.id } })} className="text-[10px] text-blue-400 hover:text-blue-600 font-medium flex items-center gap-0.5 opacity-60 hover:opacity-100">
-                        <i className="fas fa-plus-circle"></i> 備註/時間
-                    </button>
+                    {/* 操作按鈕 */}
+                    <div className="flex gap-2 mt-1 flex-wrap">
+                        {!costEnabled && (
+                            <button onClick={() => dispatch({ type: PLAN_ACTIONS.UPDATE_CHILD_FIELD, payload: { planId, dayId, nodeId, childId: child.id, field: 'estimatedCostEnabled', value: true } })} className="text-[10px] text-amber-500 hover:text-amber-700 font-medium flex items-center gap-0.5">
+                                <i className="fas fa-plus-circle"></i> 預估金額
+                            </button>
+                        )}
+                        <button onClick={() => dispatch({ type: PLAN_ACTIONS.ADD_CHILD_SUBTASK, payload: { planId, dayId, nodeId, childId: child.id } })} className="text-[10px] text-blue-400 hover:text-blue-600 font-medium flex items-center gap-0.5">
+                            <i className="fas fa-plus-circle"></i> 備註
+                        </button>
+                    </div>
                 </div>
             );
         });
