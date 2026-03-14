@@ -4411,11 +4411,11 @@
                     const linkedMemos = dayMemos.filter(m => m.linkedNodeId === node.id);
                     const isNarrow = containerWidth <= 500;
                     const row = document.createElement('div');
-                    row.style.cssText = `display:flex;gap:12px;margin-bottom:14px;page-break-inside:avoid;break-inside:avoid;flex-direction:${isNarrow && linkedMemos.length > 0 ? 'column' : 'row'};`;
+                    row.style.cssText = 'display:flex;gap:12px;margin-bottom:14px;page-break-inside:avoid;break-inside:avoid;flex-direction:row;';
 
                     // 左欄 (包含內容卡片)
                     const contentCol = document.createElement('div');
-                    contentCol.style.cssText = (linkedMemos.length > 0 && !isNarrow) ? 'flex:7;min-width:0;position:relative;z-index:1;' : 'flex:1;min-width:0;position:relative;z-index:1;';
+                    contentCol.style.cssText = 'flex:1;min-width:0;position:relative;z-index:1;';
 
                     const card = document.createElement('div');
                     card.id = 'export-node-' + dayIndex + '-' + nodeIndex;
@@ -4531,16 +4531,16 @@
                         card.appendChild(childSection);
                     }
 
+                    // 如果有備忘錄，插入節點卡片底部
+                    if (linkedMemos.length > 0) {
+                        const memoInCard = document.createElement('div');
+                        memoInCard.style.cssText = 'margin-top:10px;padding-top:8px;border-top:1px dashed #cbd5e1;display:flex;flex-direction:column;gap:6px;';
+                        linkedMemos.forEach(m => memoInCard.appendChild(buildMemoCard(m, true)));
+                        card.appendChild(memoInCard);
+                    }
+
                     contentCol.appendChild(card);
                     row.appendChild(contentCol);
-
-                    // 如果有備忘錄，顯示在右側 (或堆疊在下方)
-                    if (linkedMemos.length > 0) {
-                        const memoCol = document.createElement('div');
-                        memoCol.style.cssText = isNarrow ? 'width:100%;display:flex;flex-direction:column;gap:10px;margin-top:-4px;position:relative;z-index:1;' : 'flex:3;display:flex;flex-direction:column;gap:10px;min-width:180px;position:relative;z-index:1;';
-                        linkedMemos.forEach(m => memoCol.appendChild(buildMemoCard(m, true)));
-                        row.appendChild(memoCol);
-                    }
 
                     nodesContainer.appendChild(row);
                 });
