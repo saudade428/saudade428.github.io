@@ -1,104 +1,57 @@
 # Plant Travel Planner
 
-Plant 是一個單檔型（HTML + React）旅遊規劃工具，支援多方案、多天行程、地圖檢視、費用管理、分帳結算與行前清單。
+Plant 是一個單頁旅遊規劃工具（HTML + Browser JS），支援多方案、多日行程、開銷分帳、地圖、行前清單、PDF/圖片/Markdown 匯出與 JSON 匯入匯出。
 
-## 特色功能整理
+## 本次精簡後的倉庫原則
 
-### 1. 方案與天數管理
-- 多方案切換（新增 / 刪除方案）
-- 每個方案可建立多天行程（Day）
-- 支援節點跨天搬移與整天對調
+此倉庫目前只保留三種檔案類型：
 
-### 2. 行程節點編排
-- 節點類型（景點、交通、住宿、餐飲等）
-- 子節點與預估時間管理
-- 備忘錄綁定行程節點
+- HTML：`Plant.html`
+- JS：`assets/js/*.js`
+- MD：`README.md`
 
-### 3. 開銷與分帳
-- 節點可記錄多筆費用（幣別、分類、備註、付款人、預估/實際）
-- 方案總費用彙整（多幣別）
-- 分帳結算視圖與建議轉帳
-- 手機版提供「開銷明細」按鈕並以抽屜呈現
-
-### 4. 行前清單
-- 分類化 checklist（含勾選與備註）
-- 預設包含支付準備提醒（刷卡 / 電子支付 / 自備現鈔）
-- 手機版支援分類收折/展開
-
-### 5. 檢視與匯出
-- 地圖總覽
-- 匯入 / 匯出 JSON
-- PDF 與圖片匯出（一般行程模式）
-- Markdown 分享匯出
-
-### 6. 手機體驗優化
-- Day 摘要底部抽屜
-- 行程工具列按鈕重排
-- 手機版「新增一天」放在次工具列（工具按鈕附近）
-
-## 技術組成
-- React 18（UMD）
-- Tailwind CSS（CDN）
-- Font Awesome 6
-- Leaflet
-- html2canvas + jsPDF
-- 單一主檔：`Plant.backup-20260311-000001.html`
+不再維護 docs 鏡像與多份 backup HTML 進 Git 追蹤。
 
 ## 專案結構
-- `Plant.backup-20260311-000001.html`：目前維護中的主檔
-- `docs/Plant.html`：GitHub Pages 實際載入頁面
-- `docs/index.html`：入口（自動轉址到 `Plant.html`）
 
-## 本機更新與發佈流程
-1. 修改主檔：`Plant.backup-20260311-000001.html`
-2. 同步到 GitHub Pages 檔案：
+- `Plant.html`：唯一主入口（實際執行檔）
+- `assets/js/plant-constants.js`：共用常數
+- `assets/js/plant-shared-utils.js`：共用工具
+- `assets/js/plant-import-utils.js`：匯入/合併輔助
+- `assets/js/plant-finance-utils.js`：分帳與開銷計算
+- `assets/js/plant-export-utils.js`：匯出流程輔助
+- `assets/js/plant-pdf-utils.js`：PDF 內容組裝
+- `README.md`：操作與維護說明
+
+## 開發流程
+
+1. 直接修改 `Plant.html` 或 `assets/js/*.js`
+2. 驗證功能後提交
 
 ```powershell
-Copy-Item -Path ".\Plant.backup-20260311-000001.html" -Destination ".\docs\Plant.html" -Force
+git add Plant.html assets/js README.md
+git commit -m "feat: update planner"
+git push
 ```
 
-3. 提交並推送：
+## GitHub Pages 建議設定
 
-```powershell
-git add Plant.backup-20260311-000001.html docs/Plant.html README.md
-git commit -m "docs: update README feature summary"
-git push origin main
-```
+若要直接用本倉庫精簡版發佈，請在 GitHub Pages 設定：
 
-## GitHub Pages 設定
-1. 到 repository 的 `Settings` -> `Pages`
-2. `Build and deployment` 設定：
-   - `Source`: `Deploy from a branch`
-   - `Branch`: `main`
-   - `Folder`: `/docs`
-3. 儲存後約 1~3 分鐘上線
+1. Source: Deploy from a branch
+2. Branch: `main`
+3. Folder: `/ (root)`
 
-## 備註
-- 專案目前為單檔應用，開發速度快但檔案較大。
-- 若後續要擴充，可考慮拆分為模組化結構（components / utils / state）。
+## 本地 skill 檔案策略
 
-## 回歸驗收清單
+- 專案專用 skill 可放在專案根目錄（與 `Plant.html` 同層）作為本地工作規範。
+- skill 檔案不進 Git 追蹤（透過本機 exclude 排除）。
 
-每次調整 UI 或資料結構後，建議至少檢查以下項目：
+## 回歸檢查清單
 
-### 桌機版
-- 方案新增 / 刪除 / 切換正常
-- Day 新增 / 刪除 / 切換正常
-- 行程節點新增、編輯、刪除、跨天移動正常
-- 地圖總覽可開啟
-- 匯入 / 匯出 JSON 正常
-- PDF / 圖片匯出在一般行程模式可使用
-- 行前清單勾選、分類新增與編輯正常
-- 開銷與分帳數據顯示正常
-
-### 手機版
-- Day 摘要底部抽屜可正常開啟 / 關閉
-- 開銷明細按鈕可正常開啟抽屜
-- 行前清單分類可收折 / 展開
-- 次工具列按鈕位置與高度一致
-- 新增一天按鈕位於工具按鈕上方
-
-### 資料安全
-- localStorage 自動儲存後重新整理仍保留資料
-- 多方案切換後資料未互相污染
-- 匯入舊 JSON 後資料仍可正常編輯
+- 方案/天數新增、刪除、切換是否正常
+- 節點新增、刪除、搬移、子節點是否正常
+- 匯入合併流程是否正常
+- 開銷明細與分帳結算是否正常
+- PDF/圖片/Markdown 匯出是否正常
+- localStorage 與 JSON 匯入後資料一致性是否正常
