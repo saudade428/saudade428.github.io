@@ -2807,26 +2807,28 @@
                                                 <i className={`fas ${areAllDetailSectionsCollapsed ? 'fa-expand-alt' : 'fa-compress-alt'}`}></i>
                                             </button>
                                             <div className="relative group/more">
-                                                <button className="p-1.5 rounded-full text-slate-300 hover:text-slate-500 hover:bg-slate-100 transition-colors">
+                                                <button className="p-1.5 rounded-full text-slate-300 hover:text-slate-500 hover:bg-slate-100 transition-colors" title="更多操作">
                                                     <i className="fas fa-ellipsis-v"></i>
                                                 </button>
-                                                <div className="absolute right-0 top-full mt-1 w-32 bg-white rounded-lg shadow-xl border border-slate-100 py-1 z-20 invisible group-hover/more:visible">
-                                                    {otherDays.map(d => (
+                                                <div className="absolute right-0 top-full pt-1 w-32 z-20 opacity-0 pointer-events-none transition-opacity group-hover/more:opacity-100 group-hover/more:pointer-events-auto group-focus-within/more:opacity-100 group-focus-within/more:pointer-events-auto">
+                                                    <div className="bg-white rounded-lg shadow-xl border border-slate-100 py-1">
+                                                        {otherDays.map(d => (
+                                                            <button 
+                                                                key={d.id}
+                                                                onClick={() => dispatch({ type: PLAN_ACTIONS.MOVE_NODE_TO_DAY, payload: { planId, sourceDayId: dayId, targetDayId: d.id, nodeId: node.id } })}
+                                                                className="w-full text-left px-3 py-1.5 text-xs text-slate-600 hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                                                            >
+                                                                移動至 {d.title}
+                                                            </button>
+                                                        ))}
+                                                        <div className="border-t border-slate-50 my-1"></div>
                                                         <button 
-                                                            key={d.id}
-                                                            onClick={() => dispatch({ type: PLAN_ACTIONS.MOVE_NODE_TO_DAY, payload: { planId, sourceDayId: dayId, targetDayId: d.id, nodeId: node.id } })}
-                                                            className="w-full text-left px-3 py-1.5 text-xs text-slate-600 hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                                                            onClick={() => dispatch({ type: PLAN_ACTIONS.DELETE_NODE, payload: { planId, dayId, nodeId: node.id } })}
+                                                            className="w-full text-left px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 transition-colors"
                                                         >
-                                                            移動至 {d.title}
+                                                            刪除節點
                                                         </button>
-                                                    ))}
-                                                    <div className="border-t border-slate-50 my-1"></div>
-                                                    <button 
-                                                        onClick={() => dispatch({ type: PLAN_ACTIONS.DELETE_NODE, payload: { planId, dayId, nodeId: node.id } })}
-                                                        className="w-full text-left px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 transition-colors"
-                                                    >
-                                                        刪除節點
-                                                    </button>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
