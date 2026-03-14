@@ -27,6 +27,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="assets/js/plant-shared-utils.js"></script>
     <script src="assets/js/plant-pdf-utils.js"></script>
+    <script src="assets/js/plant-import-utils.js"></script>
     
     <style>
         html { font-size: 16px; }
@@ -953,133 +954,28 @@
             return ensurePlanPaymentData(rawData);
         }
 
+        const {
+            normalizeImportedTripData: normalizeImportedTripDataExternal,
+            simplifyPlanForComparison: simplifyPlanForComparisonExternal,
+            buildImportMergeSelection: buildImportMergeSelectionExternal
+        } = window.PlantImportUtils || {};
+
         function normalizeImportedTripData(importedData) {
-            if (!importedData || !Array.isArray(importedData.plans)) return null;
-            return normalizeStoredData({
-                ...importedData,
-                plans: importedData.plans.map((plan) => ({
-                    ...plan,
-                    companions: plan.companions || [],
-                    companionRules: getPlanCompanionRules(plan),
-                    paymentSources: getPlanPaymentSources(plan),
-                    days: (plan.days || []).map((day, dayIndex) => ({
-                        ...day,
-                        id: day.id || `import-day-${dayIndex + 1}`,
-                        title: day.title || `Day ${dayIndex + 1}`,
-                        subtitle: day.subtitle || '',
-                        journal: day.journal || '',
-                        weather: day.weather || { condition: '', tempHigh: '', tempLow: '' },
-                        memos: (day.memos || []).map((memo, memoIndex) => ({
-                            id: memo.id || `import-memo-${dayIndex + 1}-${memoIndex + 1}`,
-                            x: 50,
-                            y: 150,
-                            width: 224,
-                            height: null,
-                            title: 'MEMO',
-                            text: '',
-                            color: 'bg-yellow-200',
-                            image: null,
-                            linkedNodeId: null,
-                            ...memo
-                        })),
-                        nodes: (day.nodes || []).map((node, nodeIndex) => {
-                            const baseNode = {
-                                ...node,
-                                id: node.id || `import-node-${dayIndex + 1}-${nodeIndex + 1}`,
-                                time: node.time || '',
-                                tags: node.tags || '',
-                                lat: node.lat || '',
-                                lng: node.lng || '',
-                                paidBy: node.paidBy || '',
-                                splitAmong: Array.isArray(node.splitAmong) ? node.splitAmong : [],
-                                children: Array.isArray(node.children) ? node.children : [],
-                                subtasks: Array.isArray(node.subtasks) ? node.subtasks : []
-                            };
-                            return syncLegacyExpenseFields(baseNode, normalizeExpenseItems(baseNode));
-                        })
-                    })),
-                    checklists: Array.isArray(plan.checklists) ? plan.checklists : []
-                }))
+            return normalizeImportedTripDataExternal(importedData, {
+                normalizeStoredData,
+                getPlanCompanionRules,
+                getPlanPaymentSources,
+                syncLegacyExpenseFields,
+                normalizeExpenseItems
             });
         }
 
         function simplifyPlanForComparison(plan) {
-            if (!plan) return null;
-            return {
-                name: String(plan.name || ''),
-                companions: (plan.companions || []).map((companion) => ({
-                    name: String(companion.name || ''),
-                    color: String(companion.color || '')
-                })),
-                companionRules: getPlanCompanionRules(plan),
-                paymentSources: getPlanPaymentSources(plan).map((source) => ({
-                    name: String(source.name || ''),
-                    method: String(source.method || ''),
-                    currency: String(source.currency || ''),
-                    initialAmount: Math.max(0, Number(source.initialAmount || 0)),
-                    note: String(source.note || '')
-                })),
-                days: (plan.days || []).map((day) => ({
-                    title: String(day.title || ''),
-                    subtitle: String(day.subtitle || ''),
-                    journal: String(day.journal || ''),
-                    weather: {
-                        condition: String(day.weather?.condition || ''),
-                        tempHigh: String(day.weather?.tempHigh || ''),
-                        tempLow: String(day.weather?.tempLow || '')
-                    },
-                    nodes: (day.nodes || []).map((node) => ({
-                        title: String(node.title || ''),
-                        type: String(node.type || ''),
-                        time: String(node.time || ''),
-                        tags: String(node.tags || ''),
-                        lat: String(node.lat || ''),
-                        lng: String(node.lng || ''),
-                        paidBy: String(node.paidBy || ''),
-                        splitAmong: Array.isArray(node.splitAmong) ? [...node.splitAmong].sort() : [],
-                        subtasks: (node.subtasks || []).map((subtask) => ({
-                            text: String(subtask.text || ''),
-                            type: String(subtask.type || '')
-                        })),
-                        children: (node.children || []).map((child) => ({
-                            title: String(child.title || ''),
-                            estimatedCostEnabled: child.estimatedCostEnabled === true,
-                            estimatedCostType: String(child.estimatedCostType || 'single'),
-                            estimatedCost: Number(child.estimatedCost || 0),
-                            estimatedCostMin: Number(child.estimatedCostMin || 0),
-                            estimatedCostMax: Number(child.estimatedCostMax || 0),
-                            estimatedCostCurrency: String(child.estimatedCostCurrency || 'TWD'),
-                            subtasks: (child.subtasks || []).map((subtask) => ({ text: String(subtask.text || '') }))
-                        })),
-                        expenseItems: normalizeExpenseItems(node).map((item) => ({
-                            currency: String(item.currency || 'TWD'),
-                            amount: Number(item.amount || 0),
-                            category: String(item.category || 'other'),
-                            subCategory: String(item.subCategory || ''),
-                            note: String(item.note || ''),
-                            paidBy: String(item.paidBy || ''),
-                            splitAmong: Array.isArray(item.splitAmong) ? [...item.splitAmong].sort() : [],
-                            expenseStatus: String(item.expenseStatus || 'actual'),
-                            paymentMethod: String(item.paymentMethod || 'cash'),
-                            paymentSourceId: String(item.paymentSourceId || ''),
-                            paymentStatus: String(item.paymentStatus || 'cash')
-                        }))
-                    })),
-                    memos: (day.memos || []).map((memo) => ({
-                        title: String(memo.title || ''),
-                        text: String(memo.text || ''),
-                        color: String(memo.color || 'bg-yellow-200')
-                    }))
-                })),
-                checklists: (plan.checklists || []).map((checklist) => ({
-                    category: String(checklist.category || ''),
-                    items: (checklist.items || []).map((item) => ({
-                        text: String(item.text || ''),
-                        isChecked: item.isChecked === true,
-                        isNote: item.isNote === true
-                    }))
-                }))
-            };
+            return simplifyPlanForComparisonExternal(plan, {
+                getPlanCompanionRules,
+                getPlanPaymentSources,
+                normalizeExpenseItems
+            });
         }
 
         const DEFAULT_PLAN_SIGNATURE = JSON.stringify(
@@ -1091,22 +987,9 @@
         }
 
         function buildImportMergeSelection(sourcePlan, activePlan) {
-            return {
-                sourcePlanId: sourcePlan?.id || '',
-                mergedPlanName: `${activePlan?.name || sourcePlan?.name || '行程'}（匯入合併）`,
-                includeCompanionRules: true,
-                companions: (sourcePlan?.companions || []).map((companion) => ({ id: companion.id, selected: true })),
-                paymentSources: getPlanPaymentSources(sourcePlan).map((source) => ({ id: source.id, selected: true })),
-                checklists: (sourcePlan?.checklists || []).map((checklist) => ({ id: checklist.id, selected: true })),
-                days: (sourcePlan?.days || []).map((day) => ({
-                    id: day.id,
-                    selected: true,
-                    includeMeta: true,
-                    targetDayId: '__new__',
-                    nodes: (day.nodes || []).map((node) => ({ id: node.id, selected: true })),
-                    memos: (day.memos || []).map((memo) => ({ id: memo.id, selected: true }))
-                }))
-            };
+            return buildImportMergeSelectionExternal(sourcePlan, activePlan, {
+                getPlanPaymentSources
+            });
         }
 
         function createDefaultCompanionRuleMap() {
