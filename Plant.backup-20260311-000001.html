@@ -29,6 +29,7 @@
     <script src="assets/js/plant-pdf-utils.js"></script>
     <script src="assets/js/plant-import-utils.js"></script>
     <script src="assets/js/plant-finance-utils.js"></script>
+    <script src="assets/js/plant-export-utils.js"></script>
     
     <style>
         html { font-size: 16px; }
@@ -967,6 +968,12 @@
             mapTransfersToDisplayLines,
             summarizePaymentSourcesUsage
         } = window.PlantFinanceUtils || {};
+
+        const {
+            resolveExportSections: resolveExportSectionsExternal,
+            buildConflictSummaryContainer: buildConflictSummaryContainerExternal,
+            buildExportPages: buildExportPagesExternal
+        } = window.PlantExportUtils || {};
 
         function normalizeImportedTripData(importedData) {
             return normalizeImportedTripDataExternal(importedData, {
@@ -4640,15 +4647,7 @@
                 return container;
             };
 
-            const resolveExportSections = (settings = {}) => {
-                const tplKey = settings.template || 'full';
-                const templateDefaults = EXPORT_TEMPLATES[tplKey]?.defaults || EXPORT_TEMPLATES.full.defaults;
-                return {
-                    includeChecklist: settings.includeChecklist ?? templateDefaults.includeChecklist,
-                    includeSplitSummary: settings.includeSplitSummary ?? templateDefaults.includeSplitSummary,
-                    includeConflictSummary: settings.includeConflictSummary ?? templateDefaults.includeConflictSummary
-                };
-            };
+            const resolveExportSections = (settings = {}) => resolveExportSectionsExternal(settings, EXPORT_TEMPLATES);
 
             const buildSplitSummaryContainer = (plan, containerWidth, baseCurrency = 'TWD', rates = DEFAULT_EXCHANGE_RATES_TO_TWD, contentPaddingPx = 16) => {
                 const container = document.createElement('div');
@@ -4759,156 +4758,23 @@
                 return container;
             };
 
-            const buildConflictSummaryContainer = (plan, containerWidth, contentPaddingPx = 16) => {
-                const byDay = (plan.days || []).map(day => ({ day, conflicts: detectDayConflicts(day) })).filter(x => x.conflicts.length > 0);
-                if (byDay.length === 0) return null;
+            const buildConflictSummaryContainer = (plan, containerWidth, contentPaddingPx = 16) => (
+                buildConflictSummaryContainerExternal(plan, containerWidth, contentPaddingPx, detectDayConflicts)
+            );
 
-                const container = document.createElement('div');
-                container.style.cssText = `width:${containerWidth}px;background:#fff;padding:${Math.round(contentPaddingPx)}px;font-family:'Segoe UI',Tahoma,sans-serif;box-sizing:border-box;page-break-after:always;break-after:always;`;
-                container.innerHTML = `
-                    <div style="background:linear-gradient(135deg,#7f1d1d 0%,#b91c1c 100%);color:#fff;padding:14px 16px;border-radius:10px;">
-                        <div style="font-size:20px;font-weight:800;">⚠️ 行程衝突摘要</div>
-                        <div style="font-size:12px;opacity:.9;margin-top:2px;">時間重疊、時序異常檢查結果</div>
-                    </div>
-                `;
-
-                byDay.forEach(item => {
-                    const block = document.createElement('div');
-                    block.style.cssText = 'margin-top:12px;border:1px solid #fecaca;background:#fff1f2;border-radius:8px;padding:10px;';
-                    const title = document.createElement('div');
-                    title.style.cssText = 'font-size:13px;font-weight:700;color:#991b1b;margin-bottom:6px;';
-                    title.textContent = `${item.day.title}${item.day.subtitle ? ` - ${item.day.subtitle}` : ''}`;
-                    block.appendChild(title);
-                    item.conflicts.forEach(c => {
-                        const line = document.createElement('div');
-                        line.style.cssText = 'font-size:12px;color:#7f1d1d;margin-bottom:4px;';
-                        line.textContent = `• ${c.message}`;
-                        block.appendChild(line);
-                    });
-                    container.appendChild(block);
-                });
-
-                return container;
-            };
-
-            const buildExportPages = (plan, settings, containerWidth, mode = 'preview') => {
-                const sections = resolveExportSections(settings);
-                const pages = [];
-                
-                let measureRoot = null;
-                const metrics = getPaperMetrics(settings || {});
-                const contentPaddingPx = metrics.contentPaddingPx;
-                const printableHeightPx = metrics.printableHeightPx;
-                const printableWmm = metrics.printableWmm;
-                const printableHmm = metrics.printableHmm;
-                const dynamicPrintSplit = mode === 'print' && printableWmm > 0 && printableHmm > 0;
-                
-                pages.push(buildDashboardCover(plan, containerWidth, contentPaddingPx, printableHeightPx).outerHTML);
-
-                if (sections.includeSplitSummary) {
-                    const splitSummary = buildSplitSummaryContainer(plan, containerWidth, splitBaseCurrency, exchangeRatesToTwd, contentPaddingPx);
-                    if (splitSummary) pages.push(splitSummary.outerHTML);
-                }
-
-                if (sections.includeChecklist && plan.checklists && plan.checklists.length > 0) {
-                    const clContainer = buildChecklistContainer(plan, containerWidth, contentPaddingPx);
-                    pages.push(clContainer.outerHTML);
-                }
-
-                if (sections.includeConflictSummary) {
-                    const conflictSummary = buildConflictSummaryContainer(plan, containerWidth, contentPaddingPx);
-                    if (conflictSummary) pages.push(conflictSummary.outerHTML);
-                }
-
-                const ensureMeasureRoot = () => {
-                    if (measureRoot) return measureRoot;
-                    const root = document.createElement('div');
-                    root.style.cssText = `position:fixed;left:-99999px;top:0;width:${containerWidth}px;visibility:hidden;pointer-events:none;z-index:-1;`;
-                    document.body.appendChild(root);
-                    measureRoot = root;
-                    return root;
-                };
-
-                const measureFits = (planObj, dayObj, dayIndex, start, end) => {
-                    const root = ensureMeasureRoot();
-                    const sample = buildDayContainer(planObj, dayObj, dayIndex, containerWidth, {
-                        nodeStart: start,
-                        nodeEnd: end,
-                        segmentIndex: 0,
-                        segmentTotal: 1
-                    }, contentPaddingPx);
-                    root.appendChild(sample);
-                    const h = sample.scrollHeight;
-                    root.removeChild(sample);
-                    return h <= printableHeightPx;
-                };
-
-                const splitDayByHeight = (planObj, dayObj, dayIndex) => {
-                    const total = dayObj.nodes.length;
-                    if (total === 0) return [{ start: 0, end: 0 }];
-                    const ranges = [];
-                    let start = 0;
-
-                    while (start < total) {
-                        let low = start + 1;
-                        let high = total;
-                        let best = start + 1;
-
-                        while (low <= high) {
-                            const mid = Math.floor((low + high) / 2);
-                            if (measureFits(planObj, dayObj, dayIndex, start, mid)) {
-                                best = mid;
-                                low = mid + 1;
-                            } else {
-                                high = mid - 1;
-                            }
-                        }
-
-                        ranges.push({ start, end: best });
-                        start = best;
-                    }
-
-                    return ranges;
-                };
-
-                try {
-                    for (let i = 0; i < plan.days.length; i++) {
-                        const day = plan.days[i];
-
-                        if (!dynamicPrintSplit) {
-                            const dayContainer = buildDayContainer(plan, day, i, containerWidth, {
-                                nodeStart: 0,
-                                nodeEnd: day.nodes.length,
-                                segmentIndex: 0,
-                                segmentTotal: 1
-                            }, contentPaddingPx);
-                            pages.push(dayContainer.outerHTML);
-                            continue;
-                        }
-
-                        const ranges = splitDayByHeight(plan, day, i);
-                        const segTotal = ranges.length;
-                        ranges.forEach((r, segIdx) => {
-                            const dayContainer = buildDayContainer(plan, day, i, containerWidth, {
-                                nodeStart: r.start,
-                                nodeEnd: r.end,
-                                segmentIndex: segIdx,
-                                segmentTotal: segTotal
-                            }, contentPaddingPx);
-                            pages.push(dayContainer.outerHTML);
-                        });
-                    }
-                } finally {
-                    if (measureRoot && measureRoot.parentNode) {
-                        measureRoot.parentNode.removeChild(measureRoot);
-                    }
-                }
-
-                if (mode === 'preview') {
-                    return pages.map(html => html.replace('margin:0 auto;', 'margin:0 auto 40px auto;box-shadow:0 2px 12px rgba(0,0,0,0.1);border-radius:8px;'));
-                }
-                return pages;
-            };
+            const buildExportPages = (plan, settings, containerWidth, mode = 'preview') => (
+                buildExportPagesExternal(plan, settings, containerWidth, mode, {
+                    EXPORT_TEMPLATES,
+                    getPaperMetrics,
+                    buildDashboardCover,
+                    buildSplitSummaryContainer,
+                    buildChecklistContainer,
+                    buildDayContainer,
+                    splitBaseCurrency,
+                    exchangeRatesToTwd,
+                    detectDayConflicts
+                })
+            );
 
             // --- 匯出 HTML 預覽 ---
             const exportHTML = (settings) => {
