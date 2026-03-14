@@ -132,7 +132,7 @@
         const { useState, useEffect, useRef, useCallback, useReducer, useMemo } = React;
         
         // 【規則】每次對此檔案進行任何功能調整，都必須更新 APP_VERSION（格式：YYYY-MM-DD-序號）
-        const APP_VERSION = '2026-03-14-001';
+        const APP_VERSION = '2026-03-14-005';
 
         const PlantConstants = window.PlantConstants;
         if (!PlantConstants) {
@@ -3571,6 +3571,14 @@
             const activeDay = useMemo(() => activePlan?.days.find(d => d.id === activeDayId), [activePlan, activeDayId]);
             const dayConflicts = useMemo(() => detectDayConflicts(activeDay), [activeDay]);
 
+            useEffect(() => {
+                if (!activePlan) return;
+                if (['checklist', 'split', 'budget', 'gantt'].includes(activeDayId)) return;
+                if (activeDay) return;
+                if ((activePlan.days || []).length === 0) return;
+                setActiveDayId(activePlan.days[0].id);
+            }, [activePlan, activeDay, activeDayId]);
+
             // 切換方案時自動選中行前清單
             const switchPlan = (planId) => {
                 setActivePlanId(planId);
@@ -4187,6 +4195,77 @@
                 finance: { label: '分帳財務版', defaults: { includeChecklist: false, includeSplitSummary: true, includeConflictSummary: true } }
             };
 
+            const getExportTemplateProfile = (template = 'full') => {
+                switch (template) {
+                    case 'compact':
+                        return {
+                            title: 'Quick Print',
+                            subtitle: '精簡列印版',
+                            overviewColumns: 1,
+                            showOverviewNodeRows: false,
+                            showBudgetBreakdown: false,
+                            showCoverPaymentSources: false,
+                            showDayWeather: false,
+                            showDayStats: false,
+                            showTransitMapLinks: false,
+                            showSubtaskDetails: false,
+                            showChildDetails: false,
+                            showExpenseBreakdown: false,
+                            showLinkedMemos: false,
+                            showUnlinkedMemos: false,
+                            showJournal: false,
+                            showQr: false,
+                            compactDayHeader: true,
+                            nodeGap: 10,
+                            cardPadding: 10
+                        };
+                    case 'finance':
+                        return {
+                            title: 'Travel Finance Brief',
+                            subtitle: '分帳財務版',
+                            overviewColumns: 1,
+                            showOverviewNodeRows: false,
+                            showBudgetBreakdown: true,
+                            showCoverPaymentSources: true,
+                            showDayWeather: false,
+                            showDayStats: true,
+                            showTransitMapLinks: false,
+                            showSubtaskDetails: false,
+                            showChildDetails: false,
+                            showExpenseBreakdown: true,
+                            showLinkedMemos: false,
+                            showUnlinkedMemos: false,
+                            showJournal: false,
+                            showQr: false,
+                            compactDayHeader: false,
+                            nodeGap: 12,
+                            cardPadding: 12
+                        };
+                    default:
+                        return {
+                            title: 'Travel Itinerary Dashboard',
+                            subtitle: '完整行程版',
+                            overviewColumns: 2,
+                            showOverviewNodeRows: true,
+                            showBudgetBreakdown: true,
+                            showCoverPaymentSources: false,
+                            showDayWeather: true,
+                            showDayStats: true,
+                            showTransitMapLinks: true,
+                            showSubtaskDetails: true,
+                            showChildDetails: true,
+                            showExpenseBreakdown: false,
+                            showLinkedMemos: true,
+                            showUnlinkedMemos: true,
+                            showJournal: true,
+                            showQr: true,
+                            compactDayHeader: false,
+                            nodeGap: 12,
+                            cardPadding: 12
+                        };
+                }
+            };
+
             // --- 匯出共用：樣式對照表 ---
             // (已移至全域 NODE_STYLES)
 
@@ -4196,13 +4275,18 @@
             } = window.PlantPdfUtils || {};
 
             // --- 精品手冊：建立儀表板精華首頁 (Dashboard Cover) ---
-            const buildDashboardCover = (plan, width, contentPaddingPx = 16, pageHeightPx = 1050) => {
+            const buildDashboardCover = (plan, width, contentPaddingPx = 16, pageHeightPx = 1050, options = {}) => {
                 const container = document.createElement('div');
                 container.style.cssText = `width:${width}px;min-height:${Math.round(pageHeightPx)}px;background:radial-gradient(circle 400px at calc(100% + 50px) -50px, rgba(59, 130, 246, 0.1) 0%, transparent 70%), #f8fafc;color:#1e293b;display:flex;flex-direction:column;font-family:'Segoe UI',Tahoma,sans-serif;page-break-after:always;break-after:always;padding:${Math.round(contentPaddingPx)}px;box-sizing:border-box;position:relative;overflow:hidden;`;
+                const templateKey = options.template || 'full';
+                const profile = getExportTemplateProfile(templateKey);
+                const baseCurrency = options.baseCurrency || 'TWD';
+                const rates = options.exchangeRatesToTwd || DEFAULT_EXCHANGE_RATES_TO_TWD;
 
                 // 計算數據
                 const totalDays = plan.days.length;
                 const totalNodes = plan.days.reduce((sum, d) => sum + d.nodes.length, 0);
+                const totalMemos = plan.days.reduce((sum, d) => sum + ((d.memos || []).length), 0);
                 
                 // 幣別分組統計各類型支出
                 const budgetStats = plan.days.flatMap(d => d.nodes).reduce((acc, n) => {
@@ -4219,6 +4303,14 @@
 
                 const expenseHtml = Object.entries(budgetStats).map(([cur, stats]) => {
                     const sortedTypes = Object.entries(stats.byType).sort((a,b) => b[1] - a[1]);
+                    if (!profile.showBudgetBreakdown) {
+                        return `
+                            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border:1px solid #dbeafe;border-radius:12px;background:#f8fbff;min-width:180px;flex:1;">
+                                <span style="color:#475569;font-size:12px;font-weight:800;letter-spacing:0.5px;">${cur}</span>
+                                <span style="font-size:18px;font-weight:900;color:#0f172a;font-family:monospace;">${stats.total.toLocaleString()}</span>
+                            </div>
+                        `;
+                    }
                     return `
                         <div style="margin-bottom: 12px;flex:1;min-width:200px;">
                             <div style="display:flex;justify-content:space-between;padding:8px 0;align-items:baseline;">
@@ -4245,7 +4337,71 @@
                     `;
                 }).join('');
 
+                const actualEntries = collectActualExpenseEntries(plan, normalizeExpenseItems);
+                const companions = plan.companions || [];
+                const settlementSummary = profile.showCoverPaymentSources && companions.length > 0
+                    ? buildCompanionSummary(companions, actualEntries, baseCurrency, rates, {
+                        convertCurrencyAmount,
+                        getEffectiveSplitAmong
+                    })
+                    : [];
+                const settlementTransfers = settlementSummary.length > 0 ? calculateSettlementTransfers(settlementSummary) : [];
+                const transferLines = settlementSummary.length > 0 ? mapTransfersToDisplayLines(settlementTransfers, companions, baseCurrency) : [];
+                const paymentSourceUsage = profile.showCoverPaymentSources
+                    ? summarizePaymentSourcesUsage(getPlanPaymentSources(plan), actualEntries, baseCurrency, rates, {
+                        harmonizeExpensePaymentFields,
+                        convertCurrencyAmount
+                    }).filter(item => item.amountInBase > 0)
+                    : [];
+                const topExpenseDays = plan.days.map((day) => ({
+                    title: day.title,
+                    totalInBase: day.nodes.reduce((sum, node) => sum + normalizeExpenseItems(node)
+                        .filter(item => Number(item.amount || 0) > 0 && item.expenseStatus !== 'estimated')
+                        .reduce((inner, item) => inner + convertCurrencyAmount(Number(item.amount || 0), item.currency || 'TWD', baseCurrency, rates), 0), 0)
+                })).filter(day => day.totalInBase > 0).sort((a, b) => b.totalInBase - a.totalInBase).slice(0, 4);
+                const paymentSourceHtml = paymentSourceUsage.map(({ source, amountInBase, origText, remaining }) => `
+                    <div style="background:#fff;border:1px solid #dbeafe;border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:6px;min-width:180px;">
+                        <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;">
+                            <div>
+                                <div style="font-size:13px;font-weight:800;color:#0f172a;">${source.name}</div>
+                                <div style="font-size:10px;color:#64748b;">${PAYMENT_METHOD_LABELS[source.method] || source.method}</div>
+                            </div>
+                            <div style="font-size:15px;font-weight:900;color:#1d4ed8;font-family:monospace;">${baseCurrency} ${Math.round(amountInBase).toLocaleString()}</div>
+                        </div>
+                        <div style="font-size:11px;color:#475569;line-height:1.5;">${origText}</div>
+                        ${remaining == null ? '' : `<div style="font-size:11px;color:#0f766e;">剩餘 ${source.currency} ${Number(remaining).toLocaleString()}</div>`}
+                    </div>
+                `).join('');
+                const settlementCardHtml = settlementSummary.map((row) => `
+                    <div style="background:#fff;border:1px solid #dbeafe;border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:6px;min-width:180px;">
+                        <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;">
+                            <div style="font-size:13px;font-weight:800;color:#0f172a;">${row.name || '未命名'}</div>
+                            <div style="font-size:11px;font-weight:800;color:${row.diff >= 0 ? '#059669' : '#dc2626'};background:${row.diff >= 0 ? '#ecfdf5' : '#fef2f2'};border:1px solid ${row.diff >= 0 ? '#a7f3d0' : '#fecaca'};border-radius:999px;padding:2px 8px;">${row.diff >= 0 ? '應收' : '應付'}</div>
+                        </div>
+                        <div style="font-size:11px;color:#64748b;line-height:1.5;">已付 ${Number(row.paid || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} ・ 應分攤 ${Number(row.shouldPay || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                        <div style="font-size:18px;font-weight:900;color:${row.diff >= 0 ? '#047857' : '#b91c1c'};font-family:monospace;">${baseCurrency} ${Math.abs(Number(row.diff || 0)).toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                    </div>
+                `).join('');
+                const topExpenseDaysHtml = topExpenseDays.map((day, index) => `
+                    <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:9px 0;border-bottom:${index === topExpenseDays.length - 1 ? 'none' : '1px solid #dbeafe'};">
+                        <div style="font-size:12px;font-weight:700;color:#0f172a;">${day.title}</div>
+                        <div style="font-size:13px;font-weight:900;color:#1d4ed8;font-family:monospace;">${baseCurrency} ${Math.round(day.totalInBase).toLocaleString()}</div>
+                    </div>
+                `).join('');
+                const transferLinesHtml = transferLines.map((item) => `
+                    <div style="padding:9px 10px;border-radius:10px;background:#fff;border:1px solid #dbeafe;font-size:12px;color:#0f172a;line-height:1.5;">${item.text}</div>
+                `).join('');
+
                 const dayCardsHtml = plan.days.map((d, i) => {
+                    const dayExpenseText = Object.entries(
+                        d.nodes.reduce((acc, node) => {
+                            const byCurrency = getNodeExpenseByCurrency(node);
+                            Object.entries(byCurrency).forEach(([cur, amount]) => {
+                                acc[cur] = (acc[cur] || 0) + amount;
+                            });
+                            return acc;
+                        }, {})
+                    ).map(([cur, amount]) => `${cur} ${Number(amount).toLocaleString()}`).join(' / ');
                     const nodeRowsHtml = d.nodes.map((n, ni) => {
                         const ns_n = NODE_STYLES[n.type] || DEFAULT_NODE_STYLE;
                         const timeStr = n.time ? `<span style="font-size:10px;color:#2563eb;font-weight:700;min-width:40px;flex-shrink:0;">${n.time}</span>` : `<span style="min-width:40px;flex-shrink:0;"></span>`;
@@ -4260,23 +4416,95 @@
                             <span style="font-size:13px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${d.title}</span>
                             ${d.subtitle ? `<span style="font-size:10px;color:#64748b;font-weight:normal;flex-shrink:0;">${d.subtitle}</span>` : ''}
                             <span style="font-size:10px;color:#2563eb;background:#dbeafe;padding:1px 8px;border-radius:8px;flex-shrink:0;">${d.nodes.length} 節點</span>
+                            ${dayExpenseText ? `<span style="font-size:10px;color:#0f172a;background:#ffffff;padding:1px 8px;border-radius:8px;border:1px solid #cbd5e1;flex-shrink:0;">${dayExpenseText}</span>` : ''}
                         </a>
-                        ${d.nodes.length > 0 ? `<div style="border-left:2px solid #bfdbfe;margin-left:16px;padding:2px 0 2px 8px;">${nodeRowsHtml}</div>` : ''}
+                        ${profile.showOverviewNodeRows && d.nodes.length > 0 ? `<div style="border-left:2px solid #bfdbfe;margin-left:16px;padding:2px 0 2px 8px;">${nodeRowsHtml}</div>` : ''}
                     </div>`;
                 }).join('');
+
+                const compactSummaryHtml = !profile.showBudgetBreakdown ? `
+                    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px;">
+                        <div style="background:#fff;border:1px solid #dbeafe;border-radius:14px;padding:12px 14px;min-width:120px;">
+                            <div style="font-size:11px;color:#64748b;font-weight:700;">天數</div>
+                            <div style="font-size:24px;font-weight:900;color:#0f172a;">${totalDays}</div>
+                        </div>
+                        <div style="background:#fff;border:1px solid #dbeafe;border-radius:14px;padding:12px 14px;min-width:120px;">
+                            <div style="font-size:11px;color:#64748b;font-weight:700;">節點</div>
+                            <div style="font-size:24px;font-weight:900;color:#0f172a;">${totalNodes}</div>
+                        </div>
+                        <div style="background:#fff;border:1px solid #dbeafe;border-radius:14px;padding:12px 14px;min-width:120px;">
+                            <div style="font-size:11px;color:#64748b;font-weight:700;">備忘</div>
+                            <div style="font-size:24px;font-weight:900;color:#0f172a;">${totalMemos}</div>
+                        </div>
+                    </div>
+                ` : '';
+
+                const financeSummaryHtml = profile.showCoverPaymentSources ? `
+                    <div style="margin-bottom:24px;display:flex;flex-direction:column;gap:16px;">
+                        <div style="display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:16px;align-items:start;">
+                            <div style="background:linear-gradient(135deg,#0f172a 0%,#1d4ed8 100%);color:#fff;border-radius:18px;padding:18px 20px;">
+                                <div style="font-size:12px;letter-spacing:1.5px;font-weight:800;color:#bfdbfe;margin-bottom:8px;">FINANCE SNAPSHOT</div>
+                                <div style="font-size:28px;font-weight:900;line-height:1.2;margin-bottom:8px;">${baseCurrency} ${Math.round(actualEntries.reduce((sum, item) => sum + convertCurrencyAmount(Number(item.amount || 0), item.currency || 'TWD', baseCurrency, rates), 0)).toLocaleString()}</div>
+                                <div style="font-size:12px;color:#dbeafe;line-height:1.6;">以 ${baseCurrency} 為基準統計實際支出，適合直接作為分帳與對帳封面。</div>
+                                <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:16px;">
+                                    <div style="background:rgba(255,255,255,0.1);border:1px solid rgba(191,219,254,0.3);border-radius:12px;padding:10px 12px;">
+                                        <div style="font-size:10px;color:#bfdbfe;font-weight:700;letter-spacing:1px;">實際支出筆數</div>
+                                        <div style="font-size:20px;font-weight:900;margin-top:4px;">${actualEntries.length}</div>
+                                    </div>
+                                    <div style="background:rgba(255,255,255,0.1);border:1px solid rgba(191,219,254,0.3);border-radius:12px;padding:10px 12px;">
+                                        <div style="font-size:10px;color:#bfdbfe;font-weight:700;letter-spacing:1px;">建議轉帳筆數</div>
+                                        <div style="font-size:20px;font-weight:900;margin-top:4px;">${transferLines.length}</div>
+                                    </div>
+                                    <div style="background:rgba(255,255,255,0.1);border:1px solid rgba(191,219,254,0.3);border-radius:12px;padding:10px 12px;">
+                                        <div style="font-size:10px;color:#bfdbfe;font-weight:700;letter-spacing:1px;">支付來源</div>
+                                        <div style="font-size:20px;font-weight:900;margin-top:4px;">${paymentSourceUsage.length}</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:18px;padding:16px 18px;">
+                                <div style="font-size:12px;font-weight:900;letter-spacing:1.2px;color:#1d4ed8;margin-bottom:8px;">TOP SPENDING DAYS</div>
+                                ${topExpenseDaysHtml || '<div style="font-size:12px;color:#64748b;">尚未有可統計的實際支出天數</div>'}
+                            </div>
+                        </div>
+                        <div style="display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,0.9fr);gap:16px;align-items:start;">
+                            <div style="background:#f8fafc;border:1px solid #dbeafe;border-radius:18px;padding:16px 18px;">
+                                <div style="font-size:12px;font-weight:900;letter-spacing:1.2px;color:#1d4ed8;margin-bottom:10px;">旅伴收支餘額</div>
+                                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
+                                    ${settlementCardHtml || '<div style="font-size:12px;color:#64748b;">尚未建立旅伴名單，無法顯示收支餘額。</div>'}
+                                </div>
+                            </div>
+                            <div style="background:#f8fafc;border:1px solid #dbeafe;border-radius:18px;padding:16px 18px;">
+                                <div style="font-size:12px;font-weight:900;letter-spacing:1.2px;color:#1d4ed8;margin-bottom:10px;">建議轉帳</div>
+                                <div style="display:flex;flex-direction:column;gap:8px;">
+                                    ${transferLinesHtml || '<div style="padding:10px;border-radius:10px;background:#fff;border:1px dashed #cbd5e1;font-size:12px;color:#64748b;">目前帳務已接近平衡。</div>'}
+                                </div>
+                            </div>
+                        </div>
+                        <div style="background:#f8fafc;border:1px solid #dbeafe;border-radius:18px;padding:16px 18px;">
+                            <div style="font-size:12px;font-weight:900;letter-spacing:1.2px;color:#1d4ed8;margin-bottom:10px;">支付來源使用摘要</div>
+                            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
+                                ${paymentSourceHtml || '<div style="background:#fff;border:1px dashed #cbd5e1;border-radius:14px;padding:18px;color:#64748b;font-size:12px;">尚未產生任何支付來源使用紀錄</div>'}
+                            </div>
+                        </div>
+                    </div>
+                ` : '';
 
                 container.innerHTML += `
                     <div style="position:relative;z-index:1;display:flex;flex-direction:column;height:100%;">
                         <!-- 標題區域 -->
                         <div style="margin-bottom:28px;">
-                            <div style="font-size:14px;color:#3b82f6;font-weight:900;letter-spacing:3px;margin-bottom:12px;text-transform:uppercase;">Travel Itinerary Dashboard</div>
+                            <div style="font-size:14px;color:#3b82f6;font-weight:900;letter-spacing:3px;margin-bottom:12px;text-transform:uppercase;">${profile.title}</div>
                             <h1 style="font-size:42px;font-weight:900;color:#0f172a;line-height:1.2;margin:0;word-break:break-word;">${plan.name}</h1>
                             <div style="display:flex;gap:20px;margin-top:20px;align-items:center;">
-                                <div style="background:#3b82f6;color:#fff;padding:6px 14px;border-radius:20px;font-size:13px;font-weight:bold;">${totalDays} Days</div>
+                                <div style="background:#3b82f6;color:#fff;padding:6px 14px;border-radius:20px;font-size:13px;font-weight:bold;">${profile.subtitle}</div>
+                                <div style="background:#e0f2fe;color:#075985;padding:6px 14px;border-radius:20px;font-size:13px;font-weight:800;">${totalDays} Days</div>
                                 <div style="color:#64748b;font-size:13px;font-weight:500;">共 ${totalNodes} 個行程節點</div>
                                 <div style="flex:1;height:1px;background:#e2e8f0;"></div>
                             </div>
                         </div>
+
+                        ${compactSummaryHtml}
+                        ${financeSummaryHtml}
 
                         <!-- 預算統計 -->
                         <div style="margin-bottom:24px;">
@@ -4284,7 +4512,7 @@
                                 <span style="display:inline-block;width:4px;height:16px;background:#10b981;border-radius:2px;"></span>
                                 💰 預算統計 / BUDGET
                             </h3>
-                            <div style="background:#fff;padding:16px 20px;border-radius:16px;border:1px solid #f1f5f9;box-shadow:0 4px 6px rgba(0,0,0,0.02);display:flex;flex-wrap:wrap;gap:0 40px;">
+                            <div style="background:#fff;padding:16px 20px;border-radius:16px;border:1px solid #f1f5f9;box-shadow:0 4px 6px rgba(0,0,0,0.02);display:flex;flex-wrap:wrap;gap:${profile.showBudgetBreakdown ? '0 40px' : '10px'};">
                                 ${expenseHtml || '<div style="color:#94a3b8;font-size:13px;text-align:center;padding:10px 0;">尚未記錄花費</div>'}
                             </div>
                         </div>
@@ -4295,7 +4523,7 @@
                                 <span style="display:inline-block;width:4px;height:16px;background:#3b82f6;border-radius:2px;"></span>
                                 📅 行程概覽 / ITINERARY OVERVIEW
                             </h3>
-                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 20px;">
+                            <div style="display:grid;grid-template-columns:${profile.overviewColumns === 1 ? '1fr' : '1fr 1fr'};gap:4px 20px;">
                                 ${dayCardsHtml}
                             </div>
                         </div>
@@ -4314,10 +4542,14 @@
                 const nodeEnd = options.nodeEnd == null ? day.nodes.length : Number(options.nodeEnd);
                 const segmentIndex = Number(options.segmentIndex || 0);
                 const segmentTotal = Number(options.segmentTotal || 1);
+                const templateKey = options.template || 'full';
+                const profile = getExportTemplateProfile(templateKey);
                 const segmentNodes = day.nodes.slice(nodeStart, nodeEnd);
                 const container = document.createElement('div');
                 // 加入 page-break-after: always 原生列印換頁
                 container.style.cssText = `width:${containerWidth}px;background:#fff;padding:${Math.round(contentPaddingPx)}px;font-family:'Segoe UI',Tahoma,sans-serif;box-sizing:border-box;page-break-after:always;break-after:always;`;
+                const companionNameMap = Object.fromEntries((plan.companions || []).map(comp => [comp.id, comp.name]));
+                const planPaymentSources = getPlanPaymentSources(plan);
                 container.id = 'export-day-' + dayIndex;
 
                 // 計算方案總花費
@@ -4358,7 +4590,7 @@
 
                 // 新增：天氣與選單統計
                 const wIcon = day.weather?.condition ? (WEATHER_CONDITIONS.find(w => w.value === day.weather.condition) || {}).icon : '';
-                const weatherHtml = day.weather?.condition ? `<div style="display:inline-flex;align-items:center;gap:6px;background:#eff6ff;padding:4px 10px;border-radius:12px;font-size:12px;color:#3b82f6;border:1px solid #bfdbfe;margin-top:6px;">${wIcon} ${day.weather.tempHigh ? day.weather.tempHigh + '°C' : ''}${day.weather.tempLow ? ' / ' + day.weather.tempLow + '°C' : ''}</div>` : '';
+                const weatherHtml = profile.showDayWeather && day.weather?.condition ? `<div style="display:inline-flex;align-items:center;gap:6px;background:#eff6ff;padding:4px 10px;border-radius:12px;font-size:12px;color:#3b82f6;border:1px solid #bfdbfe;margin-top:6px;">${wIcon} ${day.weather.tempHigh ? day.weather.tempHigh + '°C' : ''}${day.weather.tempLow ? ' / ' + day.weather.tempLow + '°C' : ''}</div>` : '';
 
                 const nodeCount = day.nodes.length;
                 const typeCounts = day.nodes.reduce((acc, n) => { acc[n.type] = (acc[n.type] || 0) + 1; return acc; }, {});
@@ -4373,13 +4605,18 @@
                 });
                 const subProgress = subTotal === 0 ? 0 : Math.round((subDone / subTotal) * 100);
                 const dayMemosCount = day.memos ? day.memos.length : 0;
-                const statsHtml = `<div style="display:flex;gap:12px;font-size:11px;color:#64748b;margin-top:8px;flex-wrap:wrap;">
+                const statsHtml = profile.showDayStats ? `<div style="display:flex;gap:12px;font-size:11px;color:#64748b;margin-top:8px;flex-wrap:wrap;">
                     <span style="display:flex;align-items:center;gap:4px;"><span style="font-size:12px;">📌</span>${nodeCount} 節點</span>
                     ${segmentTotal > 1 ? `<span style="display:flex;align-items:center;gap:4px;"><span style="font-size:12px;">📄</span>本頁節點 ${nodeStart + 1}-${Math.min(nodeEnd, day.nodes.length)}</span>` : ''}
                     ${Object.entries(typeCounts).map(([type, count]) => `<span style="display:flex;align-items:center;gap:4px;">${(NODE_STYLES[type] || DEFAULT_NODE_STYLE).icon} ${count}</span>`).join('')}
                     ${subTotal > 0 ? `<span style="display:flex;align-items:center;gap:4px;"><span style="font-size:12px;">✅</span>任務 ${subProgress}%</span>` : ''}
                     ${dayMemosCount > 0 ? `<span style="display:flex;align-items:center;gap:4px;"><span style="font-size:12px;">🗒️</span>${dayMemosCount} 備忘</span>` : ''}
-                </div>`;
+                </div>` : '';
+
+                const financeDailySummaryHtml = profile.showExpenseBreakdown && dayExpensesHtml ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+                    <span style="background:#dbeafe;color:#1d4ed8;border:1px solid #93c5fd;border-radius:999px;padding:4px 10px;font-size:11px;font-weight:800;">財務焦點頁</span>
+                    <span style="background:#ffffff;color:#0f172a;border:1px solid #cbd5e1;border-radius:999px;padding:4px 10px;font-size:11px;font-weight:800;">實際支出優先檢視</span>
+                </div>` : '';
 
                 dayHeader.innerHTML = `
                     <div>
@@ -4387,12 +4624,83 @@
                         ${day.subtitle ? `<div style="font-size:13px;color:#64748b;font-weight:500;margin-top:2px;">${day.subtitle}</div>` : ''}
                         ${weatherHtml}
                         ${statsHtml}
+                        ${financeDailySummaryHtml}
                     </div>
                     ${dayExpenseHeaderHtml}
                 `;
                 container.appendChild(dayHeader);
 
                 const dayMemos = day.memos || [];
+                const segmentExpenseRows = profile.showExpenseBreakdown
+                    ? segmentNodes.flatMap((node) => normalizeExpenseItems(node)
+                        .filter(item => Number(item.amount || 0) > 0)
+                        .map((item) => {
+                            const source = planPaymentSources.find(entry => entry.id === item.paymentSourceId);
+                            const splitNames = (Array.isArray(item.splitAmong) ? item.splitAmong : [])
+                                .map(id => companionNameMap[id] || id)
+                                .filter(Boolean);
+                            return {
+                                time: node.time || '未排時段',
+                                nodeTitle: node.title || '未命名節點',
+                                categoryLabel: `${EXPENSE_CATEGORIES[item.category] || '其他'}${item.subCategory ? ` / ${item.subCategory}` : ''}`,
+                                payerLabel: item.paidBy ? (companionNameMap[item.paidBy] || item.paidBy) : '未指定',
+                                sourceLabel: source?.name || (PAYMENT_METHOD_LABELS[item.paymentMethod] || '未指定'),
+                                splitLabel: splitNames.length > 0 ? splitNames.join('、') : '全部旅伴 / 未指定',
+                                amountLabel: `${item.currency || 'TWD'} ${Number(item.amount || 0).toLocaleString()}`,
+                                note: item.note || ''
+                            };
+                        }))
+                    : [];
+
+                if (profile.showExpenseBreakdown) {
+                    const ledgerSection = document.createElement('div');
+                    ledgerSection.style.cssText = 'margin-bottom:18px;background:#f8fafc;border:1px solid #dbeafe;border-radius:16px;padding:14px 16px;';
+                    ledgerSection.innerHTML = `
+                        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px;">
+                            <div>
+                                <div style="font-size:14px;font-weight:900;color:#1d4ed8;letter-spacing:0.8px;">Expense Ledger</div>
+                                <div style="font-size:11px;color:#64748b;margin-top:3px;">依節點順序列出本頁帳目，可直接拿來對帳或分帳。</div>
+                            </div>
+                            <div style="font-size:12px;font-weight:800;color:#0f172a;background:#fff;border:1px solid #cbd5e1;border-radius:999px;padding:5px 10px;">${segmentExpenseRows.length} 筆</div>
+                        </div>
+                    `;
+                    if (segmentExpenseRows.length === 0) {
+                        const emptyLedger = document.createElement('div');
+                        emptyLedger.style.cssText = 'background:#fff;border:1px dashed #cbd5e1;border-radius:12px;padding:14px;font-size:12px;color:#64748b;';
+                        emptyLedger.textContent = '本頁沒有任何可列入分帳的支出。';
+                        ledgerSection.appendChild(emptyLedger);
+                    } else {
+                        const ledgerTable = document.createElement('div');
+                        ledgerTable.style.cssText = 'display:flex;flex-direction:column;border:1px solid #dbeafe;border-radius:12px;overflow:hidden;background:#fff;';
+                        const headerRow = document.createElement('div');
+                        headerRow.style.cssText = 'display:grid;grid-template-columns:88px minmax(0,1.5fr) minmax(0,1.2fr) 110px;padding:10px 12px;background:#eff6ff;font-size:11px;font-weight:900;color:#1d4ed8;letter-spacing:0.4px;';
+                        headerRow.innerHTML = '<div>時間 / 類別</div><div>節點 / 備註</div><div>付款人 / 來源 / 分攤</div><div style="text-align:right;">金額</div>';
+                        ledgerTable.appendChild(headerRow);
+                        segmentExpenseRows.forEach((row, index) => {
+                            const line = document.createElement('div');
+                            line.style.cssText = `display:grid;grid-template-columns:88px minmax(0,1.5fr) minmax(0,1.2fr) 110px;padding:10px 12px;border-top:${index === 0 ? 'none' : '1px solid #e2e8f0'};font-size:12px;color:#0f172a;align-items:start;gap:10px;`;
+                            line.innerHTML = `
+                                <div>
+                                    <div style="font-weight:800;color:#1d4ed8;">${row.time}</div>
+                                    <div style="font-size:10px;color:#64748b;margin-top:3px;line-height:1.4;">${row.categoryLabel}</div>
+                                </div>
+                                <div>
+                                    <div style="font-weight:700;color:#0f172a;line-height:1.4;">${row.nodeTitle}</div>
+                                    ${row.note ? `<div style="font-size:10px;color:#64748b;margin-top:3px;line-height:1.5;">備註：${row.note}</div>` : ''}
+                                </div>
+                                <div style="font-size:11px;color:#475569;line-height:1.6;">
+                                    <div>付款人：${row.payerLabel}</div>
+                                    <div>來源：${row.sourceLabel}</div>
+                                    <div>分攤：${row.splitLabel}</div>
+                                </div>
+                                <div style="text-align:right;font-size:13px;font-weight:900;color:#1d4ed8;font-family:monospace;white-space:nowrap;">${row.amountLabel}</div>
+                            `;
+                            ledgerTable.appendChild(line);
+                        });
+                        ledgerSection.appendChild(ledgerTable);
+                    }
+                    container.appendChild(ledgerSection);
+                }
 
                 // 行程節點容器 (含連貫時間軸連線)
                 const nodesContainer = document.createElement('div');
@@ -4411,7 +4719,7 @@
                     const linkedMemos = dayMemos.filter(m => m.linkedNodeId === node.id);
                     const isNarrow = containerWidth <= 500;
                     const row = document.createElement('div');
-                    row.style.cssText = 'display:flex;gap:12px;margin-bottom:14px;page-break-inside:avoid;break-inside:avoid;flex-direction:row;';
+                    row.style.cssText = `display:flex;gap:${profile.nodeGap}px;margin-bottom:${profile.nodeGap + 2}px;page-break-inside:avoid;break-inside:avoid;flex-direction:row;`;
 
                     // 左欄 (包含內容卡片)
                     const contentCol = document.createElement('div');
@@ -4420,9 +4728,9 @@
                     const card = document.createElement('div');
                     card.id = 'export-node-' + dayIndex + '-' + nodeIndex;
                     if (node.type === 'transit') {
-                        card.style.cssText = `background:rgba(248, 250, 252, 0.7);border:2px dashed ${ns.border};border-radius:8px;padding:12px 16px;`;
+                        card.style.cssText = `background:rgba(248, 250, 252, 0.7);border:2px dashed ${ns.border};border-radius:8px;padding:${profile.cardPadding}px ${profile.cardPadding + 4}px;`;
                     } else {
-                        card.style.cssText = `background:${ns.bg};border:1px solid #e2e8f0;border-left:5px solid ${ns.border};border-radius:8px;padding:12px 16px;`;
+                        card.style.cssText = `background:${ns.bg};border:1px solid #e2e8f0;border-left:5px solid ${ns.border};border-radius:8px;padding:${profile.cardPadding}px ${profile.cardPadding + 4}px;`;
                     }
 
                     // 標題列 + 標籤 + 時間
@@ -4454,7 +4762,7 @@
                     card.appendChild(titleRow);
 
                     // 交通地圖連結
-                    if (node.type === 'transit' && (node.startMap || node.endMap)) {
+                    if (profile.showTransitMapLinks && node.type === 'transit' && (node.startMap || node.endMap)) {
                         const mapRow = document.createElement('div');
                         mapRow.style.cssText = 'display:flex;justify-content:space-between;font-size:10px;color:#3b82f6;margin-left:40px;margin-top:-2px;margin-bottom:6px;';
                         mapRow.innerHTML = `
@@ -4468,14 +4776,19 @@
                     if (node.subtasks.length > 0) {
                         const subContainer = document.createElement('div');
                         subContainer.style.cssText = `margin:6px 0 0 36px;padding-left:10px;border-left:2px dashed ${ns.border}40;`;
-                        node.subtasks.forEach(sub => {
-                            const subEl = document.createElement('div');
-                            const textColor = sub.isCompleted ? '#94a3b8' : '#475569';
-                            const textDecor = sub.isCompleted ? 'line-through' : 'none';
-                            subEl.style.cssText = `font-size:13px;color:${textColor};text-decoration:${textDecor};margin:4px 0;white-space:pre-wrap;display:flex;align-items:flex-start;gap:6px;`;
-                            subEl.innerHTML = `<span style="flex:1;line-height:1.4;">${sub.text}</span>`;
-                            subContainer.appendChild(subEl);
-                        });
+                        if (profile.showSubtaskDetails) {
+                            node.subtasks.forEach(sub => {
+                                const subEl = document.createElement('div');
+                                const textColor = sub.isCompleted ? '#94a3b8' : '#475569';
+                                const textDecor = sub.isCompleted ? 'line-through' : 'none';
+                                subEl.style.cssText = `font-size:13px;color:${textColor};text-decoration:${textDecor};margin:4px 0;white-space:pre-wrap;display:flex;align-items:flex-start;gap:6px;`;
+                                subEl.innerHTML = `<span style="flex:1;line-height:1.4;">${sub.text}</span>`;
+                                subContainer.appendChild(subEl);
+                            });
+                        } else {
+                            const doneCount = node.subtasks.filter(sub => sub.isCompleted).length;
+                            subContainer.innerHTML = `<div style="font-size:11px;color:#64748b;font-weight:700;">任務摘要 ${doneCount}/${node.subtasks.length} 完成</div>`;
+                        }
                         card.appendChild(subContainer);
                     }
 
@@ -4490,6 +4803,30 @@
                             ${Object.entries(nodeExpenseByCurrency).map(([cur, amount]) => `<span style="font-size:11px;color:#94a3b8;margin-right:2px;">${cur}</span><span style="font-size:14px;color:#0f172a;font-weight:bold;font-family:monospace;margin-right:8px;">${Number(amount).toLocaleString()}</span>`).join('')}
                         `;
                         card.appendChild(costRow);
+
+                        if (profile.showExpenseBreakdown) {
+                            const expenseBreakdown = document.createElement('div');
+                            expenseBreakdown.style.cssText = 'margin-top:8px;display:flex;flex-direction:column;gap:6px;';
+                            normalizeExpenseItems(node).filter(item => Number(item.amount || 0) > 0).forEach(item => {
+                                const source = planPaymentSources.find(entry => entry.id === item.paymentSourceId);
+                                const splitCount = Array.isArray(item.splitAmong) ? item.splitAmong.length : 0;
+                                const line = document.createElement('div');
+                                line.style.cssText = 'background:#fff;border:1px solid #dbeafe;border-radius:8px;padding:8px 10px;display:flex;justify-content:space-between;gap:12px;align-items:flex-start;';
+                                line.innerHTML = `
+                                    <div style="flex:1;min-width:0;">
+                                        <div style="font-size:12px;font-weight:800;color:#0f172a;">${EXPENSE_CATEGORIES[item.category] || '其他'}${item.subCategory ? ` / ${item.subCategory}` : ''}</div>
+                                        <div style="font-size:11px;color:#64748b;line-height:1.5;">
+                                            ${item.paidBy ? `付款人：${companionNameMap[item.paidBy] || item.paidBy}` : '付款人：未指定'}
+                                            ${source ? ` · 來源：${source.name}` : ''}
+                                            ${splitCount > 0 ? ` · 分攤 ${splitCount} 人` : ''}
+                                        </div>
+                                    </div>
+                                    <div style="font-size:13px;font-weight:900;color:#1d4ed8;font-family:monospace;white-space:nowrap;">${item.currency || 'TWD'} ${Number(item.amount || 0).toLocaleString()}</div>
+                                `;
+                                expenseBreakdown.appendChild(line);
+                            });
+                            card.appendChild(expenseBreakdown);
+                        }
                     }
 
                     // 子節點
@@ -4518,13 +4855,19 @@
                                 costEl.textContent = '\uD83E\uDE99 ' + costText;
                                 childCard.appendChild(costEl);
                             }
-                            // 備註
-                            (child.subtasks || []).forEach(cs => {
-                                const csEl = document.createElement('div');
-                                csEl.style.cssText = 'font-size:11px;color:#64748b;margin-top:3px;padding-left:6px;border-left:2px dashed #cbd5e1;white-space:pre-wrap;line-height:1.4;';
-                                csEl.textContent = cs.text;
-                                childCard.appendChild(csEl);
-                            });
+                            if (profile.showChildDetails) {
+                                (child.subtasks || []).forEach(cs => {
+                                    const csEl = document.createElement('div');
+                                    csEl.style.cssText = 'font-size:11px;color:#64748b;margin-top:3px;padding-left:6px;border-left:2px dashed #cbd5e1;white-space:pre-wrap;line-height:1.4;';
+                                    csEl.textContent = cs.text;
+                                    childCard.appendChild(csEl);
+                                });
+                            } else if ((child.subtasks || []).length > 0) {
+                                const summaryEl = document.createElement('div');
+                                summaryEl.style.cssText = 'font-size:11px;color:#64748b;margin-top:4px;';
+                                summaryEl.textContent = `備註 ${(child.subtasks || []).length} 筆`;
+                                childCard.appendChild(summaryEl);
+                            }
                             childRow.appendChild(childCard);
                         });
                         childSection.appendChild(childRow);
@@ -4532,7 +4875,7 @@
                     }
 
                     // 如果有備忘錄，插入節點卡片底部
-                    if (linkedMemos.length > 0) {
+                    if (profile.showLinkedMemos && linkedMemos.length > 0) {
                         const memoInCard = document.createElement('div');
                         memoInCard.style.cssText = 'margin-top:10px;padding-top:8px;border-top:1px dashed #cbd5e1;display:flex;flex-direction:column;gap:6px;';
                         linkedMemos.forEach(m => memoInCard.appendChild(buildMemoCard(m, true)));
@@ -4550,7 +4893,7 @@
                 // 未勾稽備忘錄
                 const isLastSegment = segmentIndex === segmentTotal - 1;
                 const unlinkedMemos = dayMemos.filter(m => !m.linkedNodeId);
-                if (isLastSegment && unlinkedMemos.length > 0) {
+                if (profile.showUnlinkedMemos && isLastSegment && unlinkedMemos.length > 0) {
                     const memoSection = document.createElement('div');
                     memoSection.style.cssText = 'margin-top:20px;padding-top:14px;border-top:2px dashed #94a3b8;';
                     memoSection.innerHTML = '<div style="font-size:14px;font-weight:bold;color:#475569;margin-bottom:10px;">🗒️ 其他備忘錄</div>';
@@ -4567,7 +4910,7 @@
                 }
 
                 // 旅行日誌
-                if (isLastSegment && day.journal) {
+                if (profile.showJournal && isLastSegment && day.journal) {
                     const journalSection = document.createElement('div');
                     journalSection.style.cssText = 'margin-top:24px;padding:16px;background:#fefce8;border:1px dashed #fbbf24;border-radius:8px;';
                     journalSection.innerHTML = `
@@ -4581,7 +4924,7 @@
 
                 // 新增：QR Code 導覽區
                 const rNodes = segmentNodes.filter(n => n.lat && n.lng);
-                if (rNodes.length > 0) {
+                if (profile.showQr && rNodes.length > 1) {
                     const waypoints = rNodes.map(n => `${n.lat},${n.lng}`);
                     const routeUrl = `https://www.google.com/maps/dir/${waypoints.join('/')}`;
                     // 更換為更穩定的 QR Code API
@@ -6020,7 +6363,7 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                         )}
 
                         {/* 無選中天數的提示 */}
-                        {!activeDay && activePlan && activeDayId !== 'checklist' && activeDayId !== 'split' && activeDayId !== 'budget' && activeDayId !== 'gantt' && (
+                        {!activeDay && activePlan && activePlan.days.length === 0 && activeDayId !== 'checklist' && activeDayId !== 'split' && activeDayId !== 'budget' && activeDayId !== 'gantt' && (
                             <div className="text-center py-20 text-slate-400">
                                 <i className="far fa-calendar-plus text-4xl mb-4 block"></i>
                                 <p className="text-lg font-medium mb-2">尚無行程天數</p>

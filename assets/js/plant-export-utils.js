@@ -45,6 +45,7 @@
 
     function buildExportPages(plan, settings, containerWidth, mode, deps) {
         var sections = resolveExportSections(settings, deps.EXPORT_TEMPLATES);
+        var templateKey = settings && settings.template ? settings.template : 'full';
         var pages = [];
         var measureRoot = null;
         var metrics = deps.getPaperMetrics(settings || {});
@@ -54,7 +55,12 @@
         var printableHmm = metrics.printableHmm;
         var dynamicPrintSplit = mode === 'print' && printableWmm > 0 && printableHmm > 0;
 
-        pages.push(deps.buildDashboardCover(plan, containerWidth, contentPaddingPx, printableHeightPx).outerHTML);
+        pages.push(deps.buildDashboardCover(plan, containerWidth, contentPaddingPx, printableHeightPx, {
+            template: templateKey,
+            sections: sections,
+            baseCurrency: deps.splitBaseCurrency,
+            exchangeRatesToTwd: deps.exchangeRatesToTwd
+        }).outerHTML);
 
         if (sections.includeSplitSummary) {
             var splitSummary = deps.buildSplitSummaryContainer(plan, containerWidth, deps.splitBaseCurrency, deps.exchangeRatesToTwd, contentPaddingPx);
@@ -86,7 +92,9 @@
                 nodeStart: start,
                 nodeEnd: end,
                 segmentIndex: 0,
-                segmentTotal: 1
+                segmentTotal: 1,
+                template: templateKey,
+                sections: sections
             }, contentPaddingPx);
             root.appendChild(sample);
             var h = sample.scrollHeight;
@@ -131,7 +139,9 @@
                         nodeStart: 0,
                         nodeEnd: day.nodes.length,
                         segmentIndex: 0,
-                        segmentTotal: 1
+                        segmentTotal: 1,
+                        template: templateKey,
+                        sections: sections
                     }, contentPaddingPx);
                     pages.push(dayContainerSingle.outerHTML);
                     continue;
@@ -144,7 +154,9 @@
                         nodeStart: r.start,
                         nodeEnd: r.end,
                         segmentIndex: segIdx,
-                        segmentTotal: segTotal
+                        segmentTotal: segTotal,
+                        template: templateKey,
+                        sections: sections
                     }, contentPaddingPx);
                     pages.push(dayContainer.outerHTML);
                 });
