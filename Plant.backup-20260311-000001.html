@@ -28,6 +28,7 @@
     <script src="assets/js/plant-shared-utils.js"></script>
     <script src="assets/js/plant-pdf-utils.js"></script>
     <script src="assets/js/plant-import-utils.js"></script>
+    <script src="assets/js/plant-finance-utils.js"></script>
     
     <style>
         html { font-size: 16px; }
@@ -959,6 +960,13 @@
             simplifyPlanForComparison: simplifyPlanForComparisonExternal,
             buildImportMergeSelection: buildImportMergeSelectionExternal
         } = window.PlantImportUtils || {};
+
+        const {
+            collectActualExpenseEntries,
+            buildCompanionSummary,
+            mapTransfersToDisplayLines,
+            summarizePaymentSourcesUsage
+        } = window.PlantFinanceUtils || {};
 
         function normalizeImportedTripData(importedData) {
             return normalizeImportedTripDataExternal(importedData, {
@@ -4647,26 +4655,14 @@
                 container.style.cssText = `width:${containerWidth}px;background:#fff;padding:${Math.round(contentPaddingPx)}px;font-family:'Segoe UI',Tahoma,sans-serif;box-sizing:border-box;page-break-after:always;break-after:always;`;
 
                 const companions = plan.companions || [];
-                const allEntries = (plan.days || []).flatMap(day => (day.nodes || []).flatMap(node =>
-                    normalizeExpenseItems(node)
-                        .filter(it => Number(it.amount || 0) > 0 && it.expenseStatus !== 'estimated')
-                        .map(it => ({ dayTitle: day.title, nodeTitle: node.title || '未命名', ...it }))
-                ));
-
-                const summary = companions.map(comp => {
-                    const paid = allEntries.filter(it => it.paidBy === comp.id).reduce((sum, it) => {
-                        return sum + convertCurrencyAmount(Number(it.amount || 0), it.currency || 'TWD', baseCurrency, rates);
-                    }, 0);
-                    const shouldPay = allEntries.reduce((sum, it) => {
-                        const splitList = getEffectiveSplitAmong(it, companions);
-                        if (!splitList.includes(comp.id) || splitList.length === 0) return sum;
-                        const converted = convertCurrencyAmount(Number(it.amount || 0), it.currency || 'TWD', baseCurrency, rates);
-                        return sum + converted / splitList.length;
-                    }, 0);
-                    return { ...comp, paid, shouldPay, diff: paid - shouldPay };
+                const allEntries = collectActualExpenseEntries(plan, normalizeExpenseItems);
+                const summary = buildCompanionSummary(companions, allEntries, baseCurrency, rates, {
+                    convertCurrencyAmount,
+                    getEffectiveSplitAmong
                 });
 
                 const transfers = calculateSettlementTransfers(summary);
+                const transferLines = mapTransfersToDisplayLines(transfers, companions, baseCurrency);
 
                 container.innerHTML = `
                     <div style="background:linear-gradient(135deg,#0f766e 0%,#14b8a6 100%);color:#fff;padding:14px 16px;border-radius:10px;display:flex;justify-content:space-between;align-items:center;gap:12px;">
@@ -4714,12 +4710,10 @@
                     ok.textContent = '目前帳務已接近平衡。';
                     transferSection.appendChild(ok);
                 } else {
-                    transfers.forEach(item => {
-                        const from = companions.find(c => c.id === item.fromId)?.name || '未命名';
-                        const to = companions.find(c => c.id === item.toId)?.name || '未命名';
+                    transferLines.forEach(item => {
                         const line = document.createElement('div');
                         line.style.cssText = 'font-size:12px;color:#0f172a;margin-bottom:4px;';
-                        line.textContent = `${from} -> ${to}: ${baseCurrency} ${Number(item.amount || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+                        line.textContent = item.text;
                         transferSection.appendChild(line);
                     });
                 }
@@ -4728,6 +4722,10 @@
                 // --- 支付來源使用摘要 ---
                 const paymentSources = getPlanPaymentSources(plan);
                 if (paymentSources.length > 0) {
+                    const sourceSummaryRows = summarizePaymentSourcesUsage(paymentSources, allEntries, baseCurrency, rates, {
+                        harmonizeExpensePaymentFields,
+                        convertCurrencyAmount
+                    });
                     const sourceSection = document.createElement('div');
                     sourceSection.style.cssText = 'margin-top:16px;';
                     const sourceTitle = document.createElement('div');
@@ -4737,36 +4735,19 @@
 
                     const sourceGrid = document.createElement('div');
                     sourceGrid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;';
-                    paymentSources.forEach(source => {
-                        const relatedEntries = allEntries.filter(it => {
-                            const enriched = harmonizeExpensePaymentFields(it, paymentSources);
-                            return enriched.paymentSourceId === source.id;
-                        });
-                        const amountInBase = relatedEntries.reduce((sum, it) => {
-                            return sum + convertCurrencyAmount(Number(it.amount || 0), it.currency || 'TWD', baseCurrency, rates);
-                        }, 0);
-                        const origByCurrency = relatedEntries.reduce((acc, it) => {
-                            const cur = it.currency || 'TWD';
-                            acc[cur] = (acc[cur] || 0) + Number(it.amount || 0);
-                            return acc;
-                        }, {});
-                        const origText = Object.entries(origByCurrency).length === 0
-                            ? '尚未使用'
-                            : Object.entries(origByCurrency).map(([cur, amt]) => `${cur} ${Number(amt).toLocaleString(undefined, { maximumFractionDigits: 0 })}`).join(' / ');
-                        const remaining = source.currency
-                            ? Math.max(0, Number(source.initialAmount || 0) - Number(origByCurrency[source.currency] || 0))
-                            : null;
+                    sourceSummaryRows.forEach(row => {
+                        const source = row.source;
 
-                        const remainingHtml = remaining !== null
-                            ? '<div style="font-size:11px;color:#64748b;">剩餘：' + source.currency + ' ' + Number(remaining).toLocaleString(undefined, { maximumFractionDigits: 0 }) + '</div>'
+                        const remainingHtml = row.remaining !== null
+                            ? '<div style="font-size:11px;color:#64748b;">剩餘：' + source.currency + ' ' + Number(row.remaining).toLocaleString(undefined, { maximumFractionDigits: 0 }) + '</div>'
                             : '';
                         const card = document.createElement('div');
                         card.style.cssText = 'border:1px solid #e2e8f0;border-radius:8px;padding:10px;background:#f8fafc;';
                         card.innerHTML = `
                             <div style="font-size:13px;font-weight:700;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${source.name || '未命名來源'}</div>
                             <div style="font-size:11px;color:#64748b;margin-top:2px;">${PAYMENT_METHOD_LABELS[source.method] || '其他方式'}</div>
-                            <div style="font-size:11px;color:#64748b;">原始：${origText}</div>
-                            <div style="font-size:12px;font-weight:700;color:#0284c7;margin-top:4px;">折算 ${baseCurrency}：${Number(amountInBase).toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                            <div style="font-size:11px;color:#64748b;">原始：${row.origText}</div>
+                            <div style="font-size:12px;font-weight:700;color:#0284c7;margin-top:4px;">折算 ${baseCurrency}：${Number(row.amountInBase).toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
                             ${remainingHtml}
                         `;
                         sourceGrid.appendChild(card);
