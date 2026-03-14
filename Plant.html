@@ -951,12 +951,170 @@
             return ensurePlanPaymentData(rawData);
         }
 
-        const createDefaultCompanionRuleMap = () => Object.keys(EXPENSE_CATEGORIES).reduce((acc, key) => {
-            acc[key] = [];
-            return acc;
-        }, {});
+        function normalizeImportedTripData(importedData) {
+            if (!importedData || !Array.isArray(importedData.plans)) return null;
+            return normalizeStoredData({
+                ...importedData,
+                plans: importedData.plans.map((plan) => ({
+                    ...plan,
+                    companions: plan.companions || [],
+                    companionRules: getPlanCompanionRules(plan),
+                    paymentSources: getPlanPaymentSources(plan),
+                    days: (plan.days || []).map((day, dayIndex) => ({
+                        ...day,
+                        id: day.id || `import-day-${dayIndex + 1}`,
+                        title: day.title || `Day ${dayIndex + 1}`,
+                        subtitle: day.subtitle || '',
+                        journal: day.journal || '',
+                        weather: day.weather || { condition: '', tempHigh: '', tempLow: '' },
+                        memos: (day.memos || []).map((memo, memoIndex) => ({
+                            id: memo.id || `import-memo-${dayIndex + 1}-${memoIndex + 1}`,
+                            x: 50,
+                            y: 150,
+                            width: 224,
+                            height: null,
+                            title: 'MEMO',
+                            text: '',
+                            color: 'bg-yellow-200',
+                            image: null,
+                            linkedNodeId: null,
+                            ...memo
+                        })),
+                        nodes: (day.nodes || []).map((node, nodeIndex) => {
+                            const baseNode = {
+                                ...node,
+                                id: node.id || `import-node-${dayIndex + 1}-${nodeIndex + 1}`,
+                                time: node.time || '',
+                                tags: node.tags || '',
+                                lat: node.lat || '',
+                                lng: node.lng || '',
+                                paidBy: node.paidBy || '',
+                                splitAmong: Array.isArray(node.splitAmong) ? node.splitAmong : [],
+                                children: Array.isArray(node.children) ? node.children : [],
+                                subtasks: Array.isArray(node.subtasks) ? node.subtasks : []
+                            };
+                            return syncLegacyExpenseFields(baseNode, normalizeExpenseItems(baseNode));
+                        })
+                    })),
+                    checklists: Array.isArray(plan.checklists) ? plan.checklists : []
+                }))
+            });
+        }
 
-        const getPlanCompanionRules = (plan) => {
+        function simplifyPlanForComparison(plan) {
+            if (!plan) return null;
+            return {
+                name: String(plan.name || ''),
+                companions: (plan.companions || []).map((companion) => ({
+                    name: String(companion.name || ''),
+                    color: String(companion.color || '')
+                })),
+                companionRules: getPlanCompanionRules(plan),
+                paymentSources: getPlanPaymentSources(plan).map((source) => ({
+                    name: String(source.name || ''),
+                    method: String(source.method || ''),
+                    currency: String(source.currency || ''),
+                    initialAmount: Math.max(0, Number(source.initialAmount || 0)),
+                    note: String(source.note || '')
+                })),
+                days: (plan.days || []).map((day) => ({
+                    title: String(day.title || ''),
+                    subtitle: String(day.subtitle || ''),
+                    journal: String(day.journal || ''),
+                    weather: {
+                        condition: String(day.weather?.condition || ''),
+                        tempHigh: String(day.weather?.tempHigh || ''),
+                        tempLow: String(day.weather?.tempLow || '')
+                    },
+                    nodes: (day.nodes || []).map((node) => ({
+                        title: String(node.title || ''),
+                        type: String(node.type || ''),
+                        time: String(node.time || ''),
+                        tags: String(node.tags || ''),
+                        lat: String(node.lat || ''),
+                        lng: String(node.lng || ''),
+                        paidBy: String(node.paidBy || ''),
+                        splitAmong: Array.isArray(node.splitAmong) ? [...node.splitAmong].sort() : [],
+                        subtasks: (node.subtasks || []).map((subtask) => ({
+                            text: String(subtask.text || ''),
+                            type: String(subtask.type || '')
+                        })),
+                        children: (node.children || []).map((child) => ({
+                            title: String(child.title || ''),
+                            estimatedCostEnabled: child.estimatedCostEnabled === true,
+                            estimatedCostType: String(child.estimatedCostType || 'single'),
+                            estimatedCost: Number(child.estimatedCost || 0),
+                            estimatedCostMin: Number(child.estimatedCostMin || 0),
+                            estimatedCostMax: Number(child.estimatedCostMax || 0),
+                            estimatedCostCurrency: String(child.estimatedCostCurrency || 'TWD'),
+                            subtasks: (child.subtasks || []).map((subtask) => ({ text: String(subtask.text || '') }))
+                        })),
+                        expenseItems: normalizeExpenseItems(node).map((item) => ({
+                            currency: String(item.currency || 'TWD'),
+                            amount: Number(item.amount || 0),
+                            category: String(item.category || 'other'),
+                            subCategory: String(item.subCategory || ''),
+                            note: String(item.note || ''),
+                            paidBy: String(item.paidBy || ''),
+                            splitAmong: Array.isArray(item.splitAmong) ? [...item.splitAmong].sort() : [],
+                            expenseStatus: String(item.expenseStatus || 'actual'),
+                            paymentMethod: String(item.paymentMethod || 'cash'),
+                            paymentSourceId: String(item.paymentSourceId || ''),
+                            paymentStatus: String(item.paymentStatus || 'cash')
+                        }))
+                    })),
+                    memos: (day.memos || []).map((memo) => ({
+                        title: String(memo.title || ''),
+                        text: String(memo.text || ''),
+                        color: String(memo.color || 'bg-yellow-200')
+                    }))
+                })),
+                checklists: (plan.checklists || []).map((checklist) => ({
+                    category: String(checklist.category || ''),
+                    items: (checklist.items || []).map((item) => ({
+                        text: String(item.text || ''),
+                        isChecked: item.isChecked === true,
+                        isNote: item.isNote === true
+                    }))
+                }))
+            };
+        }
+
+        const DEFAULT_PLAN_SIGNATURE = JSON.stringify(
+            simplifyPlanForComparison(normalizeImportedTripData(initialData)?.plans?.[0] || null)
+        );
+
+        function isPlanEquivalentToDefault(plan) {
+            return JSON.stringify(simplifyPlanForComparison(plan)) === DEFAULT_PLAN_SIGNATURE;
+        }
+
+        function buildImportMergeSelection(sourcePlan, activePlan) {
+            return {
+                sourcePlanId: sourcePlan?.id || '',
+                mergedPlanName: `${activePlan?.name || sourcePlan?.name || '行程'}（匯入合併）`,
+                includeCompanionRules: true,
+                companions: (sourcePlan?.companions || []).map((companion) => ({ id: companion.id, selected: true })),
+                paymentSources: getPlanPaymentSources(sourcePlan).map((source) => ({ id: source.id, selected: true })),
+                checklists: (sourcePlan?.checklists || []).map((checklist) => ({ id: checklist.id, selected: true })),
+                days: (sourcePlan?.days || []).map((day) => ({
+                    id: day.id,
+                    selected: true,
+                    includeMeta: true,
+                    targetDayId: '__new__',
+                    nodes: (day.nodes || []).map((node) => ({ id: node.id, selected: true })),
+                    memos: (day.memos || []).map((memo) => ({ id: memo.id, selected: true }))
+                }))
+            };
+        }
+
+        function createDefaultCompanionRuleMap() {
+            return Object.keys(EXPENSE_CATEGORIES).reduce((acc, key) => {
+                acc[key] = [];
+                return acc;
+            }, {});
+        }
+
+        function getPlanCompanionRules(plan) {
             const companionIds = (plan?.companions || []).map(c => c.id);
             const baseMap = createDefaultCompanionRuleMap();
             const sourceMap = plan?.companionRules?.categorySplitDefaults || {};
@@ -971,7 +1129,7 @@
                 categorySplitDefaults: normalizedMap,
                 autoApplyOnCategoryChange: plan?.companionRules?.autoApplyOnCategoryChange !== false
             };
-        };
+        }
 
         const applyCategoryRuleToExpenseItem = (expenseItem, plan, options = {}) => {
             const { force = false } = options;
@@ -1051,7 +1209,7 @@
             return conflicts;
         };
 
-        const normalizeExpenseItems = (node) => {
+        function normalizeExpenseItems(node) {
             const nodeSeed = node?.id || 'node';
             const ensureUniqueIds = (items) => {
                 const used = new Set();
@@ -1104,9 +1262,9 @@
                     paymentStatus: getLegacyPaymentStatusFromMethod(paymentMethod)
                 }
             ]);
-        };
+        }
 
-        const syncLegacyExpenseFields = (node, expenseItems) => {
+        function syncLegacyExpenseFields(node, expenseItems) {
             const items = expenseItems || normalizeExpenseItems(node);
             const first = items[0];
             const total = items.reduce((sum, it) => sum + Number(it.amount || 0), 0);
@@ -1122,7 +1280,7 @@
                 paymentSourceId: first?.paymentSourceId || node.paymentSourceId || '',
                 paymentStatus: first?.paymentStatus || getLegacyPaymentStatusFromMethod(paymentMethod)
             };
-        };
+        }
 
         const getNodeExpenseByCurrency = (node) => normalizeExpenseItems(node).reduce((acc, it) => {
             const amount = Number(it.amount || 0);
@@ -3829,6 +3987,15 @@
             const [showCollabModal, setShowCollabModal] = useState(false);
             const [collabAuthor, setCollabAuthor] = useState('');
             const [collabNote, setCollabNote] = useState('');
+            const [showImportMergeModal, setShowImportMergeModal] = useState(false);
+            const [importMergeData, setImportMergeData] = useState(null);
+            const [importMergeSelection, setImportMergeSelection] = useState(null);
+
+            const isDefaultPlanBase = useMemo(() => isPlanEquivalentToDefault(activePlan), [activePlan]);
+            const selectedImportPlan = useMemo(() => {
+                if (!importMergeData || !importMergeSelection?.sourcePlanId) return null;
+                return importMergeData.plans.find((plan) => plan.id === importMergeSelection.sourcePlanId) || null;
+            }, [importMergeData, importMergeSelection]);
 
             const exportCollabProposal = useCallback(() => {
                 if (!activePlan) return;
@@ -3900,6 +4067,231 @@
                     evt.target.value = '';
                 }
             }, [dispatch, createSnapshot]);
+
+            const closeImportMergeModal = useCallback(() => {
+                setShowImportMergeModal(false);
+                setImportMergeData(null);
+                setImportMergeSelection(null);
+            }, []);
+
+            const overwriteAllFromImportedData = useCallback(() => {
+                if (!importMergeData) return;
+                setData(importMergeData);
+                setActivePlanId(importMergeData.plans[0]?.id);
+                setActiveDayId(importMergeData.plans[0]?.days[0]?.id || null);
+                createSnapshot(`手動快照 直接匯入 ${importMergeData.plans[0]?.name || '資料'}`, importMergeData);
+                closeImportMergeModal();
+                alert('資料匯入成功！');
+            }, [importMergeData, setData, createSnapshot, closeImportMergeModal]);
+
+            const applyImportMerge = useCallback(() => {
+                if (!activePlan || !selectedImportPlan || !importMergeSelection) return;
+
+                const selectedCompanionIds = new Set((importMergeSelection.companions || []).filter((item) => item.selected).map((item) => item.id));
+                const selectedPaymentSourceIds = new Set((importMergeSelection.paymentSources || []).filter((item) => item.selected).map((item) => item.id));
+                const selectedChecklistIds = new Set((importMergeSelection.checklists || []).filter((item) => item.selected).map((item) => item.id));
+                const selectedDays = (importMergeSelection.days || []).filter((day) => day.selected);
+
+                const hasSelectedContent =
+                    selectedCompanionIds.size > 0 ||
+                    selectedPaymentSourceIds.size > 0 ||
+                    selectedChecklistIds.size > 0 ||
+                    selectedDays.some((day) =>
+                        (day.nodes || []).some((node) => node.selected) ||
+                        (day.memos || []).some((memo) => memo.selected) ||
+                        day.includeMeta
+                    );
+
+                if (!hasSelectedContent) {
+                    alert('請至少勾選一項要合併的資料。');
+                    return;
+                }
+
+                const mergedPlan = JSON.parse(JSON.stringify(activePlan));
+                mergedPlan.id = generateId();
+                mergedPlan.name = (importMergeSelection.mergedPlanName || `${activePlan.name || '行程'}（匯入合併）`).trim() || `${activePlan.name || '行程'}（匯入合併）`;
+
+                if (isDefaultPlanBase) {
+                    mergedPlan.days = [];
+                    mergedPlan.checklists = [];
+                    mergedPlan.companions = [];
+                    mergedPlan.paymentSources = createDefaultPaymentSources();
+                    mergedPlan.companionRules = {
+                        categorySplitDefaults: createDefaultCompanionRuleMap(),
+                        autoApplyOnCategoryChange: true
+                    };
+                } else {
+                    mergedPlan.companions = Array.isArray(mergedPlan.companions) ? mergedPlan.companions : [];
+                    mergedPlan.checklists = Array.isArray(mergedPlan.checklists) ? mergedPlan.checklists : [];
+                    mergedPlan.paymentSources = getPlanPaymentSources(mergedPlan);
+                    mergedPlan.companionRules = getPlanCompanionRules(mergedPlan);
+                    mergedPlan.days = Array.isArray(mergedPlan.days) ? mergedPlan.days : [];
+                }
+
+                const companionIdMap = {};
+                let mergedCompanions = [...(mergedPlan.companions || [])];
+                (selectedImportPlan.companions || []).forEach((companion) => {
+                    const matched = mergedCompanions.find((item) => String(item.name || '').trim() === String(companion.name || '').trim());
+                    if (matched) {
+                        companionIdMap[companion.id] = matched.id;
+                        return;
+                    }
+                    if (!selectedCompanionIds.has(companion.id)) return;
+                    const cloned = { ...companion, id: generateId() };
+                    mergedCompanions.push(cloned);
+                    companionIdMap[companion.id] = cloned.id;
+                });
+                mergedPlan.companions = mergedCompanions;
+
+                let mergedPaymentSources = [...getPlanPaymentSources(mergedPlan)];
+                const paymentSourceIdMap = {};
+                getPlanPaymentSources(selectedImportPlan).forEach((source) => {
+                    const matched = mergedPaymentSources.find((item) =>
+                        String(item.name || '').trim() === String(source.name || '').trim() &&
+                        String(item.method || '') === String(source.method || '') &&
+                        String(item.currency || '') === String(source.currency || '')
+                    );
+                    if (matched) {
+                        paymentSourceIdMap[source.id] = matched.id;
+                        return;
+                    }
+                    if (!selectedPaymentSourceIds.has(source.id)) return;
+                    const cloned = normalizePaymentSource({ ...source, id: generateId() }, mergedPaymentSources.length);
+                    mergedPaymentSources.push(cloned);
+                    paymentSourceIdMap[source.id] = cloned.id;
+                });
+                mergedPlan.paymentSources = mergedPaymentSources;
+
+                if (importMergeSelection.includeCompanionRules) {
+                    const baseRules = getPlanCompanionRules(mergedPlan);
+                    const importedRules = getPlanCompanionRules(selectedImportPlan);
+                    mergedPlan.companionRules = {
+                        ...baseRules,
+                        autoApplyOnCategoryChange: importedRules.autoApplyOnCategoryChange !== false,
+                        categorySplitDefaults: Object.fromEntries(
+                            Object.keys(createDefaultCompanionRuleMap()).map((category) => {
+                                const mappedIds = (importedRules.categorySplitDefaults[category] || [])
+                                    .map((companionId) => companionIdMap[companionId])
+                                    .filter(Boolean);
+                                return [category, [...new Set([...(baseRules.categorySplitDefaults[category] || []), ...mappedIds])]];
+                            })
+                        )
+                    };
+                }
+
+                mergedPlan.checklists = [
+                    ...(mergedPlan.checklists || []),
+                    ...(selectedImportPlan.checklists || [])
+                        .filter((checklist) => selectedChecklistIds.has(checklist.id))
+                        .map((checklist) => ({
+                            ...checklist,
+                            id: generateId(),
+                            items: (checklist.items || []).map((item) => ({ ...item, id: generateId() }))
+                        }))
+                ];
+
+                let mergedDays = (mergedPlan.days || []).map((day) => ({
+                    ...day,
+                    nodes: Array.isArray(day.nodes) ? [...day.nodes] : [],
+                    memos: Array.isArray(day.memos) ? [...day.memos] : []
+                }));
+                let focusDayId = mergedDays[0]?.id || 'checklist';
+
+                const cloneNodeForMerge = (node) => {
+                    const clonedSubtasks = (node.subtasks || []).map((subtask) => ({ ...subtask, id: generateId() }));
+                    const clonedChildren = (node.children || []).map((child) => ({
+                        ...child,
+                        id: generateId(),
+                        subtasks: (child.subtasks || []).map((subtask) => ({ ...subtask, id: generateId() }))
+                    }));
+                    const mappedExpenseItems = normalizeExpenseItems(node).map((item) => {
+                        const mappedSplitAmong = (item.splitAmong || []).map((companionId) => companionIdMap[companionId]).filter(Boolean);
+                        const mappedPaidBy = companionIdMap[item.paidBy] || '';
+                        const mappedPaymentSourceId = paymentSourceIdMap[item.paymentSourceId] || '';
+                        return harmonizeExpensePaymentFields({
+                            ...item,
+                            id: generateId(),
+                            paidBy: mappedPaidBy,
+                            splitAmong: mappedSplitAmong,
+                            paymentSourceId: mappedPaymentSourceId
+                        }, mergedPaymentSources);
+                    });
+                    return syncLegacyExpenseFields({
+                        ...node,
+                        id: generateId(),
+                        paidBy: companionIdMap[node.paidBy] || '',
+                        splitAmong: (node.splitAmong || []).map((companionId) => companionIdMap[companionId]).filter(Boolean),
+                        subtasks: clonedSubtasks,
+                        children: clonedChildren
+                    }, mappedExpenseItems);
+                };
+
+                selectedDays.forEach((daySelection) => {
+                    const sourceDay = (selectedImportPlan.days || []).find((day) => day.id === daySelection.id);
+                    if (!sourceDay) return;
+
+                    const selectedNodes = (sourceDay.nodes || []).filter((node) => (daySelection.nodes || []).some((entry) => entry.id === node.id && entry.selected));
+                    const nodeIdMap = {};
+                    const clonedNodes = selectedNodes.map((node) => {
+                        const clonedNode = cloneNodeForMerge(node);
+                        nodeIdMap[node.id] = clonedNode.id;
+                        return clonedNode;
+                    });
+
+                    const clonedMemos = (sourceDay.memos || [])
+                        .filter((memo) => (daySelection.memos || []).some((entry) => entry.id === memo.id && entry.selected))
+                        .map((memo) => ({
+                            ...memo,
+                            id: generateId(),
+                            linkedNodeId: memo.linkedNodeId ? (nodeIdMap[memo.linkedNodeId] || null) : null
+                        }));
+
+                    const shouldCreateNewDay = daySelection.targetDayId === '__new__' || !mergedDays.some((day) => day.id === daySelection.targetDayId);
+                    if (shouldCreateNewDay) {
+                        const newDay = {
+                            ...sourceDay,
+                            id: generateId(),
+                            title: sourceDay.title || `Day ${mergedDays.length + 1}`,
+                            subtitle: daySelection.includeMeta ? (sourceDay.subtitle || '') : '',
+                            journal: daySelection.includeMeta ? (sourceDay.journal || '') : '',
+                            weather: daySelection.includeMeta ? (sourceDay.weather || { condition: '', tempHigh: '', tempLow: '' }) : { condition: '', tempHigh: '', tempLow: '' },
+                            nodes: clonedNodes,
+                            memos: clonedMemos
+                        };
+                        mergedDays.push(newDay);
+                        if (!focusDayId || focusDayId === 'checklist') focusDayId = newDay.id;
+                        return;
+                    }
+
+                    mergedDays = mergedDays.map((day) => {
+                        if (day.id !== daySelection.targetDayId) return day;
+                        focusDayId = day.id;
+                        return {
+                            ...day,
+                            title: daySelection.includeMeta ? (sourceDay.title || day.title) : day.title,
+                            subtitle: daySelection.includeMeta ? (sourceDay.subtitle || '') : day.subtitle,
+                            journal: daySelection.includeMeta ? (sourceDay.journal || '') : day.journal,
+                            weather: daySelection.includeMeta ? (sourceDay.weather || day.weather) : day.weather,
+                            nodes: [...(day.nodes || []), ...clonedNodes],
+                            memos: [...(day.memos || []), ...clonedMemos]
+                        };
+                    });
+                });
+
+                mergedPlan.days = mergedDays;
+
+                const normalizedNewPlan = normalizeStoredData({ plans: [mergedPlan] }).plans[0];
+                const mergedDataSnapshot = {
+                    ...dataRef.current,
+                    plans: [...dataRef.current.plans, normalizedNewPlan]
+                };
+                dispatch({ type: PLAN_ACTIONS.ADD_PLAN, payload: { plan: normalizedNewPlan } });
+                setActivePlanId(normalizedNewPlan.id);
+                setActiveDayId(focusDayId || normalizedNewPlan.days[0]?.id || 'checklist');
+                createSnapshot(`手動快照 匯入合併 ${normalizedNewPlan.name}`, mergedDataSnapshot);
+                closeImportMergeModal();
+                alert('已建立合併後的新版本行程。');
+            }, [activePlan, selectedImportPlan, importMergeSelection, isDefaultPlanBase, dispatch, createSnapshot, closeImportMergeModal]);
 
             // 備忘錄與清單狀態
             const currentMemos = activeDay?.memos || [];
@@ -4361,9 +4753,8 @@
                             const subEl = document.createElement('div');
                             const textColor = sub.isCompleted ? '#94a3b8' : '#475569';
                             const textDecor = sub.isCompleted ? 'line-through' : 'none';
-                            const icon = sub.isCompleted ? '☑️' : '🔲';
                             subEl.style.cssText = `font-size:13px;color:${textColor};text-decoration:${textDecor};margin:4px 0;white-space:pre-wrap;display:flex;align-items:flex-start;gap:6px;`;
-                            subEl.innerHTML = `<span style="font-size:12px;margin-top:2px;">${icon}</span><span style="flex:1;line-height:1.4;">${sub.text}</span>`;
+                            subEl.innerHTML = `<span style="flex:1;line-height:1.4;">${sub.text}</span>`;
                             subContainer.appendChild(subEl);
                         });
                         card.appendChild(subContainer);
@@ -5335,63 +5726,25 @@ ${pages.join('\n')}
                 URL.revokeObjectURL(url);
             };
 
-            const importJSON = (e) => {
+            const importJSON = async (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                    try {
-                        const importedData = JSON.parse(event.target.result);
-                        if (importedData.plans) {
-                            // 正規化資料：確保每個 day 有 memos/subtitle，每個 memo 有完整欄位
-                            const normalized = {
-                                ...importedData,
-                                plans: importedData.plans.map(plan => ({
-                                    ...plan,
-                                    companions: plan.companions || [],
-                                    companionRules: getPlanCompanionRules(plan),
-                                    days: (plan.days || []).map(day => ({
-                                        ...day,
-                                        subtitle: day.subtitle || '',
-                                        journal: day.journal || '',
-                                        weather: day.weather || { condition: '', tempHigh: '', tempLow: '' },
-                                        memos: (day.memos || []).map(m => ({
-                                            x: 50, y: 150, width: 224, height: null,
-                                            title: 'MEMO', text: '', color: 'bg-yellow-200',
-                                            image: null, linkedNodeId: null,
-                                            ...m
-                                        })),
-                                        nodes: (day.nodes || []).map(n => {
-                                            const baseNode = {
-                                                ...n,
-                                                time: n.time || '',
-                                                tags: n.tags || '',
-                                                lat: n.lat || '',
-                                                lng: n.lng || '',
-                                                paidBy: n.paidBy || '',
-                                                splitAmong: n.splitAmong || [],
-                                                children: n.children || [],
-                                                subtasks: n.subtasks || []
-                                            };
-                                            return syncLegacyExpenseFields(baseNode, normalizeExpenseItems(baseNode));
-                                        })
-                                    })),
-                                    checklists: plan.checklists || []
-                                }))
-                            };
-                            setData(normalized);
-                            setActivePlanId(normalized.plans[0]?.id);
-                            setActiveDayId(normalized.plans[0]?.days[0]?.id || null);
-                            alert("資料匯入成功！");
-                        } else {
-                            alert("無效的 JSON 結構");
-                        }
-                    } catch (err) {
-                        alert("解析 JSON 失敗");
+                try {
+                    const text = await file.text();
+                    const importedData = JSON.parse(text);
+                    const normalized = normalizeImportedTripData(importedData);
+                    if (!normalized?.plans?.length) {
+                        alert('無效的 JSON 結構');
+                        return;
                     }
-                };
-                reader.readAsText(file);
-                e.target.value = ''; // 重置 file input，允許重複匯入同一檔案
+                    setImportMergeData(normalized);
+                    setImportMergeSelection(buildImportMergeSelection(normalized.plans[0], activePlan));
+                    setShowImportMergeModal(true);
+                } catch (err) {
+                    alert('解析 JSON 失敗');
+                } finally {
+                    e.target.value = '';
+                }
             };
 
             // --- C2: 唯讀分享匯出 ---
@@ -7460,6 +7813,344 @@ ${day.journal ? `<div class="journal">📖 ${day.journal}</div>` : ''}
                                             <i className="fas fa-file-import mr-1"></i> 匯入提案檔
                                             <input type="file" accept=".json" onChange={importCollabProposal} className="hidden" />
                                         </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {showImportMergeModal && importMergeData && importMergeSelection && (
+                        <div className="fixed inset-0 bg-slate-950/70 z-[1470] flex items-center justify-center p-3 sm:p-5" onClick={closeImportMergeModal}>
+                            <div className="bg-white w-full max-w-6xl rounded-3xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                                <div className="bg-gradient-to-r from-indigo-700 via-sky-700 to-cyan-600 text-white px-5 py-4 flex items-center justify-between gap-4">
+                                    <div>
+                                        <h3 className="text-xl font-bold flex items-center gap-2"><i className="fas fa-code-merge"></i> 匯入合併中心</h3>
+                                        <p className="text-sm text-white/80 mt-1">先挑選來源方案與節點，再決定要合併到新的版本行程。</p>
+                                    </div>
+                                    <button onClick={closeImportMergeModal} className="text-white/80 hover:text-white text-lg"><i className="fas fa-times"></i></button>
+                                </div>
+
+                                <div className="p-5 overflow-y-auto space-y-5 bg-slate-50">
+                                    <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+                                        <div className="xl:col-span-2 bg-white rounded-2xl border border-slate-200 p-4 space-y-4">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <div>
+                                                    <label className="text-sm font-semibold text-slate-700 block mb-1">來源方案</label>
+                                                    <select
+                                                        value={importMergeSelection.sourcePlanId}
+                                                        onChange={(e) => {
+                                                            const nextPlan = importMergeData.plans.find((plan) => plan.id === e.target.value);
+                                                            if (!nextPlan) return;
+                                                            setImportMergeSelection(buildImportMergeSelection(nextPlan, activePlan));
+                                                        }}
+                                                        className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-white"
+                                                    >
+                                                        {importMergeData.plans.map((plan) => (
+                                                            <option key={plan.id} value={plan.id}>{plan.name || '未命名方案'}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label className="text-sm font-semibold text-slate-700 block mb-1">新版本名稱</label>
+                                                    <input
+                                                        value={importMergeSelection.mergedPlanName}
+                                                        onChange={(e) => setImportMergeSelection((prev) => ({ ...prev, mergedPlanName: e.target.value }))}
+                                                        className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm"
+                                                        placeholder="例如：東京行程（匯入合併版）"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div className={`rounded-xl border px-4 py-3 text-sm ${isDefaultPlanBase ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-emerald-50 border-emerald-200 text-emerald-800'}`}>
+                                                {isDefaultPlanBase
+                                                    ? '目前方案仍是預設教學資料，執行合併時會先清空預設內容，再用你勾選的匯入資料建立新版本。'
+                                                    : '目前方案含自訂內容，執行合併時會保留現有資料，再把你勾選的匯入內容追加到新版本。'}
+                                            </div>
+
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4">
+                                                    <div className="flex items-center justify-between mb-3">
+                                                        <h4 className="font-bold text-slate-800">旅伴 / 分帳人員</h4>
+                                                        <span className="text-xs text-slate-400">勾選後會同步映射到分帳</span>
+                                                    </div>
+                                                    <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                                                        {(selectedImportPlan?.companions || []).length === 0 && <div className="text-sm text-slate-400">來源方案沒有旅伴資料</div>}
+                                                        {(selectedImportPlan?.companions || []).map((companion) => {
+                                                            const item = (importMergeSelection.companions || []).find((entry) => entry.id === companion.id);
+                                                            return (
+                                                                <label key={companion.id} className="flex items-center gap-2 text-sm text-slate-700">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={item?.selected === true}
+                                                                        onChange={(e) => setImportMergeSelection((prev) => ({
+                                                                            ...prev,
+                                                                            companions: prev.companions.map((entry) => entry.id === companion.id ? { ...entry, selected: e.target.checked } : entry)
+                                                                        }))}
+                                                                    />
+                                                                    <span className="inline-flex h-3 w-3 rounded-full" style={{ backgroundColor: companion.color || '#94a3b8' }}></span>
+                                                                    <span>{companion.name || '未命名旅伴'}</span>
+                                                                </label>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                    <label className="mt-3 flex items-center gap-2 text-sm text-slate-700">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={importMergeSelection.includeCompanionRules}
+                                                            onChange={(e) => setImportMergeSelection((prev) => ({ ...prev, includeCompanionRules: e.target.checked }))}
+                                                        />
+                                                        <span>同步分類預設分帳規則</span>
+                                                    </label>
+                                                </div>
+
+                                                <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4">
+                                                    <div className="flex items-center justify-between mb-3">
+                                                        <h4 className="font-bold text-slate-800">支付來源</h4>
+                                                        <span className="text-xs text-slate-400">現金 / 卡片 / 電支</span>
+                                                    </div>
+                                                    <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                                                        {getPlanPaymentSources(selectedImportPlan).map((source) => {
+                                                            const item = (importMergeSelection.paymentSources || []).find((entry) => entry.id === source.id);
+                                                            return (
+                                                                <label key={source.id} className="flex items-start gap-2 text-sm text-slate-700">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={item?.selected === true}
+                                                                        onChange={(e) => setImportMergeSelection((prev) => ({
+                                                                            ...prev,
+                                                                            paymentSources: prev.paymentSources.map((entry) => entry.id === source.id ? { ...entry, selected: e.target.checked } : entry)
+                                                                        }))}
+                                                                    />
+                                                                    <span>
+                                                                        <span className="font-medium block">{source.name}</span>
+                                                                        <span className="text-xs text-slate-400">{PAYMENT_METHOD_LABELS[source.method] || source.method}{source.currency ? ` / ${source.currency}` : ''}</span>
+                                                                    </span>
+                                                                </label>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+
+                                                <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4">
+                                                    <div className="flex items-center justify-between mb-3">
+                                                        <h4 className="font-bold text-slate-800">清單分類</h4>
+                                                        <span className="text-xs text-slate-400">依分類追加</span>
+                                                    </div>
+                                                    <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                                                        {(selectedImportPlan?.checklists || []).length === 0 && <div className="text-sm text-slate-400">來源方案沒有清單</div>}
+                                                        {(selectedImportPlan?.checklists || []).map((checklist) => {
+                                                            const item = (importMergeSelection.checklists || []).find((entry) => entry.id === checklist.id);
+                                                            return (
+                                                                <label key={checklist.id} className="flex items-start gap-2 text-sm text-slate-700">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={item?.selected === true}
+                                                                        onChange={(e) => setImportMergeSelection((prev) => ({
+                                                                            ...prev,
+                                                                            checklists: prev.checklists.map((entry) => entry.id === checklist.id ? { ...entry, selected: e.target.checked } : entry)
+                                                                        }))}
+                                                                    />
+                                                                    <span>
+                                                                        <span className="font-medium block">{checklist.category || '未分類清單'}</span>
+                                                                        <span className="text-xs text-slate-400">{(checklist.items || []).length} 項</span>
+                                                                    </span>
+                                                                </label>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-slate-900 text-slate-100 rounded-2xl p-4 border border-slate-800 space-y-3">
+                                            <div className="text-sm font-semibold tracking-wide text-slate-300">合併摘要</div>
+                                            <div className="grid grid-cols-2 gap-3 text-sm">
+                                                <div className="rounded-xl bg-white/5 border border-white/10 p-3">
+                                                    <div className="text-slate-400 text-xs">來源天數</div>
+                                                    <div className="text-2xl font-bold">{selectedImportPlan?.days?.length || 0}</div>
+                                                </div>
+                                                <div className="rounded-xl bg-white/5 border border-white/10 p-3">
+                                                    <div className="text-slate-400 text-xs">勾選天數</div>
+                                                    <div className="text-2xl font-bold">{(importMergeSelection.days || []).filter((day) => day.selected).length}</div>
+                                                </div>
+                                                <div className="rounded-xl bg-white/5 border border-white/10 p-3">
+                                                    <div className="text-slate-400 text-xs">勾選節點</div>
+                                                    <div className="text-2xl font-bold">{(importMergeSelection.days || []).reduce((sum, day) => sum + (day.nodes || []).filter((node) => node.selected).length, 0)}</div>
+                                                </div>
+                                                <div className="rounded-xl bg-white/5 border border-white/10 p-3">
+                                                    <div className="text-slate-400 text-xs">勾選清單</div>
+                                                    <div className="text-2xl font-bold">{(importMergeSelection.checklists || []).filter((item) => item.selected).length}</div>
+                                                </div>
+                                            </div>
+                                            <div className="text-xs text-slate-400 leading-6">
+                                                合併後會建立新的方案版本，不會直接覆寫你目前正在編輯的內容。
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-4">
+                                        <div className="flex items-center justify-between gap-3 flex-wrap">
+                                            <h4 className="font-bold text-slate-800 text-lg">日期 / 行程節點 / 備忘錄</h4>
+                                            <span className="text-sm text-slate-500">每一天都能指定合併到既有日期或新增為新的一天</span>
+                                        </div>
+
+                                        <div className="space-y-4">
+                                            {(selectedImportPlan?.days || []).map((day, dayIndex) => {
+                                                const daySelection = (importMergeSelection.days || []).find((entry) => entry.id === day.id);
+                                                if (!daySelection) return null;
+                                                return (
+                                                    <div key={day.id} className="border border-slate-200 rounded-2xl overflow-hidden">
+                                                        <div className="bg-slate-100 px-4 py-3 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+                                                            <label className="flex items-center gap-3 text-slate-800 font-semibold">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={daySelection.selected}
+                                                                    onChange={(e) => setImportMergeSelection((prev) => ({
+                                                                        ...prev,
+                                                                        days: prev.days.map((entry) => entry.id === day.id ? { ...entry, selected: e.target.checked } : entry)
+                                                                    }))}
+                                                                />
+                                                                <span>{day.title || `Day ${dayIndex + 1}`}</span>
+                                                                <span className="text-xs text-slate-400 font-normal">{(day.nodes || []).length} 個節點 / {(day.memos || []).length} 張備忘錄</span>
+                                                            </label>
+
+                                                            <div className="flex flex-wrap items-center gap-3 text-sm">
+                                                                <label className="flex items-center gap-2 text-slate-600">
+                                                                    <span>合併位置</span>
+                                                                    <select
+                                                                        value={daySelection.targetDayId}
+                                                                        onChange={(e) => setImportMergeSelection((prev) => ({
+                                                                            ...prev,
+                                                                            days: prev.days.map((entry) => entry.id === day.id ? { ...entry, targetDayId: e.target.value } : entry)
+                                                                        }))}
+                                                                        className="border border-slate-200 rounded-lg px-2 py-1 bg-white"
+                                                                        disabled={!daySelection.selected}
+                                                                    >
+                                                                        <option value="__new__">新增為新的一天</option>
+                                                                        {(activePlan?.days || []).map((targetDay) => (
+                                                                            <option key={targetDay.id} value={targetDay.id}>{targetDay.title || '未命名日期'}</option>
+                                                                        ))}
+                                                                    </select>
+                                                                </label>
+                                                                <label className="flex items-center gap-2 text-slate-600">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={daySelection.includeMeta}
+                                                                        onChange={(e) => setImportMergeSelection((prev) => ({
+                                                                            ...prev,
+                                                                            days: prev.days.map((entry) => entry.id === day.id ? { ...entry, includeMeta: e.target.checked } : entry)
+                                                                        }))}
+                                                                        disabled={!daySelection.selected}
+                                                                    />
+                                                                    <span>套用日期標題 / 天氣 / 日誌</span>
+                                                                </label>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 p-4 bg-white">
+                                                            <div className="rounded-2xl border border-slate-200 p-4">
+                                                                <div className="flex items-center justify-between mb-3">
+                                                                    <h5 className="font-semibold text-slate-700">節點選擇</h5>
+                                                                    <button
+                                                                        type="button"
+                                                                        className="text-xs text-blue-600 hover:text-blue-500"
+                                                                        onClick={() => setImportMergeSelection((prev) => ({
+                                                                            ...prev,
+                                                                            days: prev.days.map((entry) => entry.id === day.id ? {
+                                                                                ...entry,
+                                                                                nodes: entry.nodes.map((node) => ({ ...node, selected: true }))
+                                                                            } : entry)
+                                                                        }))}
+                                                                    >
+                                                                        全選節點
+                                                                    </button>
+                                                                </div>
+                                                                <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                                                                    {(day.nodes || []).length === 0 && <div className="text-sm text-slate-400">這一天沒有節點</div>}
+                                                                    {(day.nodes || []).map((node) => {
+                                                                        const nodeSelection = daySelection.nodes.find((entry) => entry.id === node.id);
+                                                                        return (
+                                                                            <label key={node.id} className="flex items-start gap-2 text-sm text-slate-700 p-2 rounded-xl hover:bg-slate-50">
+                                                                                <input
+                                                                                    type="checkbox"
+                                                                                    checked={nodeSelection?.selected === true}
+                                                                                    disabled={!daySelection.selected}
+                                                                                    onChange={(e) => setImportMergeSelection((prev) => ({
+                                                                                        ...prev,
+                                                                                        days: prev.days.map((entry) => entry.id === day.id ? {
+                                                                                            ...entry,
+                                                                                            nodes: entry.nodes.map((item) => item.id === node.id ? { ...item, selected: e.target.checked } : item)
+                                                                                        } : entry)
+                                                                                    }))}
+                                                                                />
+                                                                                <span>
+                                                                                    <span className="font-medium block">{node.title || '未命名節點'}</span>
+                                                                                    <span className="text-xs text-slate-400">{node.time || '未排時間'}{node.tags ? ` / ${node.tags}` : ''}</span>
+                                                                                </span>
+                                                                            </label>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="rounded-2xl border border-slate-200 p-4">
+                                                                <div className="flex items-center justify-between mb-3">
+                                                                    <h5 className="font-semibold text-slate-700">備忘錄選擇</h5>
+                                                                    <button
+                                                                        type="button"
+                                                                        className="text-xs text-blue-600 hover:text-blue-500"
+                                                                        onClick={() => setImportMergeSelection((prev) => ({
+                                                                            ...prev,
+                                                                            days: prev.days.map((entry) => entry.id === day.id ? {
+                                                                                ...entry,
+                                                                                memos: entry.memos.map((memo) => ({ ...memo, selected: true }))
+                                                                            } : entry)
+                                                                        }))}
+                                                                    >
+                                                                        全選備忘錄
+                                                                    </button>
+                                                                </div>
+                                                                <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                                                                    {(day.memos || []).length === 0 && <div className="text-sm text-slate-400">這一天沒有備忘錄</div>}
+                                                                    {(day.memos || []).map((memo, memoIndex) => {
+                                                                        const memoSelection = daySelection.memos.find((entry) => entry.id === memo.id);
+                                                                        return (
+                                                                            <label key={memo.id} className="flex items-start gap-2 text-sm text-slate-700 p-2 rounded-xl hover:bg-slate-50">
+                                                                                <input
+                                                                                    type="checkbox"
+                                                                                    checked={memoSelection?.selected === true}
+                                                                                    disabled={!daySelection.selected}
+                                                                                    onChange={(e) => setImportMergeSelection((prev) => ({
+                                                                                        ...prev,
+                                                                                        days: prev.days.map((entry) => entry.id === day.id ? {
+                                                                                            ...entry,
+                                                                                            memos: entry.memos.map((item) => item.id === memo.id ? { ...item, selected: e.target.checked } : item)
+                                                                                        } : entry)
+                                                                                    }))}
+                                                                                />
+                                                                                <span>
+                                                                                    <span className="font-medium block">{memo.title || `MEMO ${memoIndex + 1}`}</span>
+                                                                                    <span className="text-xs text-slate-400 line-clamp-2">{memo.text || '空白備忘錄'}</span>
+                                                                                </span>
+                                                                            </label>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="border-t border-slate-200 px-5 py-4 bg-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                    <div className="text-sm text-slate-500">可直接整包覆蓋，也可建立一個只含勾選項目的新版本。</div>
+                                    <div className="flex flex-wrap justify-end gap-2">
+                                        <button onClick={closeImportMergeModal} className="px-4 py-2 rounded-xl border border-slate-300 text-slate-600 hover:bg-slate-50 text-sm font-semibold">取消</button>
+                                        <button onClick={overwriteAllFromImportedData} className="px-4 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-white text-sm font-semibold">直接覆蓋全部資料</button>
+                                        <button onClick={applyImportMerge} className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold">建立合併新版本</button>
                                     </div>
                                 </div>
                             </div>
